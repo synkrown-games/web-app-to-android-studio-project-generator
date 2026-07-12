@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Web App to Android Studio Project</title>
+    <link rel="stylesheet" href="main.css">
+</head>
+
+<body>
+    <div class="shell">
+
+        <header class="masthead">
+            <div>
+                <h1>Web App to Android Studio Project</h1>
+                <p>Drop in a zip of your web app and get a complete Android Studio project that runs it offline in a
+                    WebView, with a working save dialog and full asset access.</p>
+            </div>
+            <div class="stack-tag">
+                <div><b>AGP</b> 8.6.0</div>
+                <div><b>Gradle</b> 8.7</div>
+                <div><b>WebViewAssetLoader</b></div>
+                <div><b>compileSdk</b> 34</div>
+            </div>
+        </header>
+
+        <div class="grid">
+
+            <section class="card">
+                <div class="card-head"><span class="idx">01</span>
+                    <h2>Configure</h2>
+                </div>
+                <div class="card-body">
+
+                    <div class="drop" id="drop">
+                        <input type="file" id="file" accept=".zip,application/zip" hidden>
+                        <div id="dropIdle">
+                            <div class="drop-title">Drop your web app zip here</div>
+                            <div class="drop-sub">or click to browse. Must contain an index.html.</div>
+                        </div>
+                        <div id="dropLoaded" hidden>
+                            <div class="drop-file" id="fileName"></div>
+                            <div class="drop-meta" id="fileMeta"></div>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label for="appName">App name</label>
+                        <input type="text" id="appName" placeholder="My Web App" autocomplete="off">
+                        <div class="field-error" id="appNameError"></div>
+                    </div>
+
+                    <div class="field">
+                        <label for="pkgName">Package name <span class="hint">applicationId</span></label>
+                        <input type="text" id="pkgName" placeholder="com.example.mywebapp" autocomplete="off"
+                            spellcheck="false">
+                        <div class="field-error" id="pkgNameError"></div>
+                    </div>
+
+                    <div class="field">
+                        <label for="minSdk">Minimum Android version <span class="hint">minSdk</span></label>
+                        <select id="minSdk">
+                            <option value="26">Android 8.0 (API 26)</option>
+                            <option value="28">Android 9.0 (API 28)</option>
+                            <option value="30">Android 11 (API 30)</option>
+                            <option value="33">Android 13 (API 33)</option>
+                            <option value="34">Android 14 (API 34)</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label for="iconFile">App icon <span class="hint">optional, PNG/JPG — auto-generates all densities</span></label>
+                        <input type="file" id="iconFile" accept="image/png,image/jpeg,image/webp">
+                        <div class="icon-preview" id="iconPreview" hidden>
+                            <img id="iconPreviewImg" alt="icon preview">
+                            <span id="iconPreviewMeta"></span>
+                        </div>
+                        <div class="field-error" id="iconFileError"></div>
+                    </div>
+
+                    <div class="checks">
+                        <label class="check">
+                            <input type="checkbox" id="optInternet" checked>
+                            <span><span class="ct">Internet permission</span> <span class="cd">Keep on if the app
+                                    fetches anything online. Off makes it fully offline.</span></span>
+                        </label>
+                        <label class="check">
+                            <input type="checkbox" id="optCleartext">
+                            <span><span class="ct">Allow cleartext http</span> <span class="cd">Only needed if your app
+                                    loads plain http:// URLs.</span></span>
+                        </label>
+                    </div>
+
+                    <div class="field">
+                        <label>App permissions <span class="hint">added to the manifest</span></label>
+                        <div class="perm-grid" id="permGrid">
+                            <label class="check"><input type="checkbox" class="perm" value="android.permission.CAMERA"><span class="ct">Camera</span></label>
+                            <label class="check"><input type="checkbox" class="perm" value="android.permission.RECORD_AUDIO"><span class="ct">Microphone</span></label>
+                            <label class="check"><input type="checkbox" class="perm" value="android.permission.ACCESS_FINE_LOCATION"><span class="ct">Precise location</span></label>
+                            <label class="check"><input type="checkbox" class="perm" value="android.permission.ACCESS_COARSE_LOCATION"><span class="ct">Approx. location</span></label>
+                            <label class="check"><input type="checkbox" class="perm" value="android.permission.READ_EXTERNAL_STORAGE"><span class="ct">Read storage</span></label>
+                            <label class="check"><input type="checkbox" class="perm" value="android.permission.WRITE_EXTERNAL_STORAGE"><span class="ct">Write storage</span></label>
+                            <label class="check"><input type="checkbox" class="perm" value="android.permission.VIBRATE"><span class="ct">Vibrate</span></label>
+                            <label class="check"><input type="checkbox" class="perm" value="android.permission.READ_CONTACTS"><span class="ct">Read contacts</span></label>
+                        </div>
+                    </div>
+
+                    <button class="go" id="go" disabled>Generate project</button>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-head"><span class="idx">02</span>
+                    <h2>Output</h2>
+                </div>
+                <div class="out-body">
+                    <div class="log" id="log"><span class="placeholder">Build log will appear here.</span></div>
+                    <div class="tree" id="tree"></div>
+                    <div class="result" id="result">
+                        <div class="summary" id="summary"></div>
+                        <a class="download" id="download" download>Download project zip</a>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+
+        <div class="notes">
+            <h3>After you download</h3>
+            <ol>
+                <li>Unzip it, then in Android Studio choose <b>Open</b> and pick the unzipped folder. Let Gradle sync.
+                </li>
+                <li>Run it on a device or emulator. Your <code>index.html</code> loads from
+                    <code>app/src/main/assets/www/</code>.</li>
+                <li>Assets resolve over <code>https://appassets.androidplatform.net/assets/www/</code>, so relative
+                    paths and <code>fetch()</code> for images, models, and data work without CORS errors.</li>
+                <li>Downloads triggered by the page (blob, data URL, or <code>&lt;a download&gt;</code>) open the system
+                    save dialog. File pickers use <code>&lt;input type="file"&gt;</code>.</li>
+            </ol>
+            <p class="cap">The launcher icon is a placeholder. Replace it any time with Android Studio's Image Asset
+                tool.</p>
+        </div>
+
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
