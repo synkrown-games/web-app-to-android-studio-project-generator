@@ -15,6 +15,23 @@
 
     const JUNK = ['__MACOSX/', '/.DS_Store', '.DS_Store', 'Thumbs.db', '/desktop.ini'];
 
+    const ADMOB_APP_ID_RE = /^ca-app-pub-\d{16}~\d{9,12}$/;
+    const ADMOB_AD_UNIT_ID_RE = /^ca-app-pub-\d{16}\/\d{9,12}$/;
+    const TEST_ADMOB_APP_ID = 'ca-app-pub-3940256099942544~3347511713';
+    const TEST_ADMOB_BANNER_UNIT_ID = 'ca-app-pub-3940256099942544/6300978111';
+
+    function validateAdmobAppId(id) {
+        if (!id) return 'AdMob App ID is required.';
+        if (!ADMOB_APP_ID_RE.test(id)) return 'Should look like ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX.';
+        return null;
+    }
+
+    function validateAdmobAdUnitId(id) {
+        if (!id) return 'Banner ad unit ID is required.';
+        if (!ADMOB_AD_UNIT_ID_RE.test(id)) return 'Should look like ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX.';
+        return null;
+    }
+
     function validatePackage(pkg) {
         if (!pkg) return 'Package name is required.';
         const parts = pkg.split('.');
@@ -137,339 +154,544 @@
         "})();"
     ].join('\n');
 
-    function mainActivity(pkg) {
-        return 'package ' + pkg + ';\n' +
-            '\n' +
-            'import android.annotation.SuppressLint;\n' +
-            'import android.app.Activity;\n' +
-            'import android.content.Intent;\n' +
-            'import android.net.Uri;\n' +
-            'import android.os.Bundle;\n' +
-            'import android.util.Base64;\n' +
-            'import android.view.ViewGroup;\n' +
-            'import android.view.ViewParent;\n' +
-            'import android.webkit.DownloadListener;\n' +
-            'import android.webkit.JavascriptInterface;\n' +
-            'import android.webkit.URLUtil;\n' +
-            'import android.webkit.ValueCallback;\n' +
-            'import android.webkit.WebChromeClient;\n' +
-            'import android.webkit.WebResourceRequest;\n' +
-            'import android.webkit.WebResourceResponse;\n' +
-            'import android.webkit.WebSettings;\n' +
-            'import android.webkit.WebView;\n' +
-            'import android.webkit.WebViewClient;\n' +
-            'import android.widget.Toast;\n' +
-            '\n' +
-            'import androidx.activity.OnBackPressedCallback;\n' +
-            'import androidx.activity.result.ActivityResultLauncher;\n' +
-            'import androidx.activity.result.contract.ActivityResultContracts;\n' +
-            'import androidx.annotation.NonNull;\n' +
-            'import androidx.appcompat.app.AppCompatActivity;\n' +
-            'import androidx.webkit.WebViewAssetLoader;\n' +
-            '\n' +
-            'import java.io.InputStream;\n' +
-            'import java.io.OutputStream;\n' +
-            'import java.net.HttpURLConnection;\n' +
-            'import java.net.URL;\n' +
-            'import java.util.concurrent.ExecutorService;\n' +
-            'import java.util.concurrent.Executors;\n' +
-            '\n' +
-            'public class MainActivity extends AppCompatActivity {\n' +
-            '\n' +
-            '    private static final String HOST = "appassets.androidplatform.net";\n' +
-            '    private static final String START_URL =\n' +
-            '            "https://appassets.androidplatform.net/assets/www/index.html";\n' +
-            '\n' +
-            '    private WebView webView;\n' +
-            '    private final ExecutorService executor = Executors.newSingleThreadExecutor();\n' +
-            '\n' +
-            '    private ValueCallback<Uri[]> fileChooserCallback;\n' +
-            '    private byte[] pendingBytes;\n' +
-            '    private String pendingUrl;\n' +
-            '\n' +
-            '    private final ActivityResultLauncher<Intent> openFileLauncher =\n' +
-            '            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),\n' +
-            '                    result -> {\n' +
-            '                        Uri[] value = null;\n' +
-            '                        if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {\n' +
-            '                            Uri data = result.getData().getData();\n' +
-            '                            if (data != null) {\n' +
-            '                                value = new Uri[]{data};\n' +
-            '                            }\n' +
-            '                        }\n' +
-            '                        if (fileChooserCallback != null) {\n' +
-            '                            fileChooserCallback.onReceiveValue(value);\n' +
-            '                            fileChooserCallback = null;\n' +
-            '                        }\n' +
-            '                    });\n' +
-            '\n' +
-            '    private final ActivityResultLauncher<Intent> saveFileLauncher =\n' +
-            '            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),\n' +
-            '                    result -> {\n' +
-            '                        Uri target = null;\n' +
-            '                        if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {\n' +
-            '                            target = result.getData().getData();\n' +
-            '                        }\n' +
-            '                        completeSave(target);\n' +
-            '                    });\n' +
-            '\n' +
-            '    @SuppressLint("SetJavaScriptEnabled")\n' +
-            '    @Override\n' +
-            '    protected void onCreate(Bundle savedInstanceState) {\n' +
-            '        super.onCreate(savedInstanceState);\n' +
-            '\n' +
-            '        webView = new WebView(this);\n' +
-            '        setContentView(webView);\n' +
-            '\n' +
-            '        final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()\n' +
-            '                .setDomain(HOST)\n' +
-            '                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))\n' +
-            '                .build();\n' +
-            '\n' +
-            '        WebSettings settings = webView.getSettings();\n' +
-            '        settings.setJavaScriptEnabled(true);\n' +
-            '        settings.setDomStorageEnabled(true);\n' +
-            '        settings.setDatabaseEnabled(true);\n' +
-            '        settings.setMediaPlaybackRequiresUserGesture(false);\n' +
-            '        settings.setUseWideViewPort(true);\n' +
-            '        settings.setLoadWithOverviewMode(true);\n' +
-            '\n' +
-            '        webView.setWebViewClient(new WebViewClient() {\n' +
-            '            @Override\n' +
-            '            public WebResourceResponse shouldInterceptRequest(WebView view,\n' +
-            '                                                              WebResourceRequest request) {\n' +
-            '                return assetLoader.shouldInterceptRequest(request.getUrl());\n' +
-            '            }\n' +
-            '\n' +
-            '            @Override\n' +
-            '            public void onPageFinished(WebView view, String url) {\n' +
-            '                view.evaluateJavascript(DOWNLOAD_BRIDGE, null);\n' +
-            '            }\n' +
-            '        });\n' +
-            '\n' +
-            '        webView.setWebChromeClient(new WebChromeClient() {\n' +
-            '            @Override\n' +
-            '            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,\n' +
-            '                                             FileChooserParams params) {\n' +
-            '                fileChooserCallback = callback;\n' +
-            '                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);\n' +
-            '                intent.addCategory(Intent.CATEGORY_OPENABLE);\n' +
-            '                intent.setType("*/*");\n' +
-            '                String[] accept = params.getAcceptTypes();\n' +
-            '                if (accept != null && accept.length > 0 && accept[0] != null && !accept[0].isEmpty()) {\n' +
-            '                    intent.setType(accept[0]);\n' +
-            '                }\n' +
-            '                if (params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {\n' +
-            '                    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);\n' +
-            '                }\n' +
-            '                try {\n' +
-            '                    openFileLauncher.launch(intent);\n' +
-            '                } catch (Exception e) {\n' +
-            '                    fileChooserCallback = null;\n' +
-            '                    return false;\n' +
-            '                }\n' +
-            '                return true;\n' +
-            '            }\n' +
-            '        });\n' +
-            '\n' +
-            '        webView.setDownloadListener(new DownloadListener() {\n' +
-            '            @Override\n' +
-            '            public void onDownloadStart(String url, String userAgent, String disposition,\n' +
-            '                                        String mimeType, long contentLength) {\n' +
-            '                if (url.startsWith("blob:") || url.startsWith("data:")) {\n' +
-            '                    return;\n' +
-            '                }\n' +
-            '                String name = URLUtil.guessFileName(url, disposition, mimeType);\n' +
-            '                startRemoteSave(url, name, mimeType);\n' +
-            '            }\n' +
-            '        });\n' +
-            '\n' +
-            '        webView.addJavascriptInterface(new SaveBridge(), "AndroidFileSaver");\n' +
-            '\n' +
-            '        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {\n' +
-            '            @Override\n' +
-            '            public void handleOnBackPressed() {\n' +
-            '                if (webView != null && webView.canGoBack()) {\n' +
-            '                    webView.goBack();\n' +
-            '                } else {\n' +
-            '                    setEnabled(false);\n' +
-            '                    getOnBackPressedDispatcher().onBackPressed();\n' +
-            '                }\n' +
-            '            }\n' +
-            '        });\n' +
-            '\n' +
-            '        if (savedInstanceState == null) {\n' +
-            '            webView.loadUrl(START_URL);\n' +
-            '        }\n' +
-            '    }\n' +
-            '\n' +
-            '    @Override\n' +
-            '    protected void onSaveInstanceState(@NonNull Bundle outState) {\n' +
-            '        super.onSaveInstanceState(outState);\n' +
-            '        if (webView != null) {\n' +
-            '            webView.saveState(outState);\n' +
-            '        }\n' +
-            '    }\n' +
-            '\n' +
-            '    @Override\n' +
-            '    protected void onRestoreInstanceState(@NonNull Bundle savedInstanceState) {\n' +
-            '        super.onRestoreInstanceState(savedInstanceState);\n' +
-            '        if (webView != null) {\n' +
-            '            webView.restoreState(savedInstanceState);\n' +
-            '        }\n' +
-            '    }\n' +
-            '\n' +
-            '    @Override\n' +
-            '    protected void onPause() {\n' +
-            '        if (webView != null) {\n' +
-            '            webView.onPause();\n' +
-            '        }\n' +
-            '        super.onPause();\n' +
-            '    }\n' +
-            '\n' +
-            '    @Override\n' +
-            '    protected void onResume() {\n' +
-            '        super.onResume();\n' +
-            '        if (webView != null) {\n' +
-            '            webView.onResume();\n' +
-            '        }\n' +
-            '    }\n' +
-            '\n' +
-            '    private void startSaveBytes(byte[] data, String filename, String mime) {\n' +
-            '        pendingBytes = data;\n' +
-            '        pendingUrl = null;\n' +
-            '        launchSaveDialog(filename, mime);\n' +
-            '    }\n' +
-            '\n' +
-            '    private void startRemoteSave(String url, String filename, String mime) {\n' +
-            '        pendingBytes = null;\n' +
-            '        pendingUrl = url;\n' +
-            '        launchSaveDialog(filename, mime);\n' +
-            '    }\n' +
-            '\n' +
-            '    private void launchSaveDialog(String filename, String mime) {\n' +
-            '        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);\n' +
-            '        intent.addCategory(Intent.CATEGORY_OPENABLE);\n' +
-            '        intent.setType(mime == null || mime.isEmpty() ? "application/octet-stream" : mime);\n' +
-            '        intent.putExtra(Intent.EXTRA_TITLE,\n' +
-            '                filename == null || filename.isEmpty() ? "download" : filename);\n' +
-            '        try {\n' +
-            '            saveFileLauncher.launch(intent);\n' +
-            '        } catch (Exception e) {\n' +
-            '            pendingBytes = null;\n' +
-            '            pendingUrl = null;\n' +
-            '            toast("No app available to save files");\n' +
-            '        }\n' +
-            '    }\n' +
-            '\n' +
-            '    private void completeSave(Uri target) {\n' +
-            '        final byte[] bytes = pendingBytes;\n' +
-            '        final String url = pendingUrl;\n' +
-            '        pendingBytes = null;\n' +
-            '        pendingUrl = null;\n' +
-            '        if (target == null) {\n' +
-            '            return;\n' +
-            '        }\n' +
-            '        if (bytes != null) {\n' +
-            '            executor.execute(() -> writeBytes(target, bytes));\n' +
-            '        } else if (url != null) {\n' +
-            '            executor.execute(() -> streamToTarget(url, target));\n' +
-            '        }\n' +
-            '    }\n' +
-            '\n' +
-            '    private void writeBytes(Uri target, byte[] data) {\n' +
-            '        try (OutputStream out = getContentResolver().openOutputStream(target)) {\n' +
-            '            if (out != null) {\n' +
-            '                out.write(data);\n' +
-            '                out.flush();\n' +
-            '            }\n' +
-            '            postToast("Saved");\n' +
-            '        } catch (Exception e) {\n' +
-            '            postToast("Could not save file");\n' +
-            '        }\n' +
-            '    }\n' +
-            '\n' +
-            '    private void streamToTarget(String url, Uri target) {\n' +
-            '        HttpURLConnection conn = null;\n' +
-            '        try {\n' +
-            '            conn = (HttpURLConnection) new URL(url).openConnection();\n' +
-            '            conn.setConnectTimeout(15000);\n' +
-            '            conn.setReadTimeout(15000);\n' +
-            '            try (InputStream in = conn.getInputStream();\n' +
-            '                 OutputStream out = getContentResolver().openOutputStream(target)) {\n' +
-            '                if (out != null) {\n' +
-            '                    byte[] buffer = new byte[8192];\n' +
-            '                    int read;\n' +
-            '                    while ((read = in.read(buffer)) != -1) {\n' +
-            '                        out.write(buffer, 0, read);\n' +
-            '                    }\n' +
-            '                    out.flush();\n' +
-            '                }\n' +
-            '            }\n' +
-            '            postToast("Saved");\n' +
-            '        } catch (Exception e) {\n' +
-            '            postToast("Could not save file");\n' +
-            '        } finally {\n' +
-            '            if (conn != null) {\n' +
-            '                conn.disconnect();\n' +
-            '            }\n' +
-            '        }\n' +
-            '    }\n' +
-            '\n' +
-            '    private void postToast(String message) {\n' +
-            '        runOnUiThread(() -> toast(message));\n' +
-            '    }\n' +
-            '\n' +
-            '    private void toast(String message) {\n' +
-            '        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();\n' +
-            '    }\n' +
-            '\n' +
-            '    @Override\n' +
-            '    protected void onDestroy() {\n' +
-            '        executor.shutdownNow();\n' +
-            '        if (webView != null) {\n' +
-            '            webView.stopLoading();\n' +
-            '            webView.setWebChromeClient(null);\n' +
-            '            webView.setWebViewClient(new WebViewClient());\n' +
-            '            webView.removeJavascriptInterface("AndroidFileSaver");\n' +
-            '            webView.loadUrl("about:blank");\n' +
-            '            ViewParent parent = webView.getParent();\n' +
-            '            if (parent instanceof ViewGroup) {\n' +
-            '                ((ViewGroup) parent).removeView(webView);\n' +
-            '            }\n' +
-            '            webView.destroy();\n' +
-            '            webView = null;\n' +
-            '        }\n' +
-            '        super.onDestroy();\n' +
-            '    }\n' +
-            '\n' +
-            '    private class SaveBridge {\n' +
-            '        @JavascriptInterface\n' +
-            '        public void saveBase64(String base64, String filename, String mime) {\n' +
-            '            if (base64 == null) {\n' +
-            '                return;\n' +
-            '            }\n' +
-            '            final byte[] data;\n' +
-            '            try {\n' +
-            '                data = Base64.decode(base64, Base64.DEFAULT);\n' +
-            '            } catch (IllegalArgumentException e) {\n' +
-            '                return;\n' +
-            '            }\n' +
-            '            runOnUiThread(() -> startSaveBytes(data, filename, mime));\n' +
-            '        }\n' +
-            '    }\n' +
-            '\n' +
-            '    private static final String DOWNLOAD_BRIDGE =\n' +
-            javaStringLiteral(DOWNLOAD_BRIDGE_JS) + ';\n' +
-            '}\n';
+    function mainActivity(pkg, opts) {
+        opts = opts || {};
+        const admob = opts.admob || null;
+        const media = !!opts.needsMediaPermissions;
+
+        const lines = [];
+        function add(s) { lines.push(s); }
+
+        add('package ' + pkg + ';');
+        add('');
+        add('import android.annotation.SuppressLint;');
+        add('import android.app.Activity;');
+        add('import android.content.Intent;');
+        add('import android.net.Uri;');
+        add('import android.os.Bundle;');
+        add('import android.util.Base64;');
+        add('import android.view.ViewGroup;');
+        add('import android.view.ViewParent;');
+        add('import android.webkit.DownloadListener;');
+        add('import android.webkit.JavascriptInterface;');
+        add('import android.webkit.URLUtil;');
+        add('import android.webkit.ValueCallback;');
+        add('import android.webkit.WebChromeClient;');
+        add('import android.webkit.WebResourceRequest;');
+        add('import android.webkit.WebResourceResponse;');
+        add('import android.webkit.WebSettings;');
+        add('import android.webkit.WebView;');
+        add('import android.webkit.WebViewClient;');
+        add('import android.widget.Toast;');
+        add('');
+        add('import androidx.activity.OnBackPressedCallback;');
+        add('import androidx.activity.result.ActivityResultLauncher;');
+        add('import androidx.activity.result.contract.ActivityResultContracts;');
+        add('import androidx.annotation.NonNull;');
+        add('import androidx.appcompat.app.AppCompatActivity;');
+        add('import androidx.webkit.WebViewAssetLoader;');
+        add('');
+        add('import java.io.InputStream;');
+        add('import java.io.OutputStream;');
+        add('import java.net.HttpURLConnection;');
+        add('import java.net.URL;');
+        add('import java.util.concurrent.ExecutorService;');
+        add('import java.util.concurrent.Executors;');
+
+        if (media) {
+            add('');
+            add('import android.Manifest;');
+            add('import android.content.pm.PackageManager;');
+            add('import android.webkit.PermissionRequest;');
+            add('import androidx.core.content.ContextCompat;');
+            add('');
+            add('import java.util.ArrayList;');
+            add('import java.util.List;');
+        }
+
+        if (admob) {
+            add('');
+            add('import android.util.DisplayMetrics;');
+            add('import android.view.Gravity;');
+            add('import android.widget.LinearLayout;');
+            add('');
+            add('import com.google.android.gms.ads.AdRequest;');
+            add('import com.google.android.gms.ads.AdSize;');
+            add('import com.google.android.gms.ads.AdView;');
+            add('import com.google.android.gms.ads.MobileAds;');
+            add('import com.google.android.ump.ConsentInformation;');
+            add('import com.google.android.ump.ConsentRequestParameters;');
+            add('import com.google.android.ump.UserMessagingPlatform;');
+        }
+
+        add('');
+        add('public class MainActivity extends AppCompatActivity {');
+        add('');
+        add('    private static final String HOST = "appassets.androidplatform.net";');
+        add('    private static final String START_URL =');
+        add('            "https://appassets.androidplatform.net/assets/www/index.html";');
+        if (admob) {
+            add('    private static final String BANNER_AD_UNIT_ID = "' + admob.bannerUnitId + '";');
+        }
+        add('');
+        add('    private WebView webView;');
+        add('    private final ExecutorService executor = Executors.newSingleThreadExecutor();');
+        add('');
+        add('    private ValueCallback<Uri[]> fileChooserCallback;');
+        add('    private byte[] pendingBytes;');
+        add('    private String pendingUrl;');
+        if (media) {
+            add('    private PermissionRequest pendingPermissionRequest;');
+        }
+        if (admob) {
+            add('    private AdView adView;');
+            add('    private ConsentInformation consentInformation;');
+        }
+        add('');
+        add('    private final ActivityResultLauncher<Intent> openFileLauncher =');
+        add('            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),');
+        add('                    result -> {');
+        add('                        Uri[] value = null;');
+        add('                        if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {');
+        add('                            Uri data = result.getData().getData();');
+        add('                            if (data != null) {');
+        add('                                value = new Uri[]{data};');
+        add('                            }');
+        add('                        }');
+        add('                        if (fileChooserCallback != null) {');
+        add('                            fileChooserCallback.onReceiveValue(value);');
+        add('                            fileChooserCallback = null;');
+        add('                        }');
+        add('                    });');
+        add('');
+        add('    private final ActivityResultLauncher<Intent> saveFileLauncher =');
+        add('            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),');
+        add('                    result -> {');
+        add('                        Uri target = null;');
+        add('                        if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {');
+        add('                            target = result.getData().getData();');
+        add('                        }');
+        add('                        completeSave(target);');
+        add('                    });');
+
+        if (media) {
+            add('');
+            add('    private final ActivityResultLauncher<String[]> runtimePermissionLauncher =');
+            add('            registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(),');
+            add('                    grantResults -> {');
+            add('                        if (pendingPermissionRequest == null) {');
+            add('                            return;');
+            add('                        }');
+            add('                        List<String> granted = new ArrayList<>();');
+            add('                        for (String resource : pendingPermissionRequest.getResources()) {');
+            add('                            String permission = toAndroidPermission(resource);');
+            add('                            if (permission != null && Boolean.TRUE.equals(grantResults.get(permission))) {');
+            add('                                granted.add(resource);');
+            add('                            }');
+            add('                        }');
+            add('                        if (granted.isEmpty()) {');
+            add('                            pendingPermissionRequest.deny();');
+            add('                        } else {');
+            add('                            pendingPermissionRequest.grant(granted.toArray(new String[0]));');
+            add('                        }');
+            add('                        pendingPermissionRequest = null;');
+            add('                    });');
+        }
+
+        add('');
+        add('    @SuppressLint("SetJavaScriptEnabled")');
+        add('    @Override');
+        add('    protected void onCreate(Bundle savedInstanceState) {');
+        add('        super.onCreate(savedInstanceState);');
+        add('');
+        add('        webView = new WebView(this);');
+
+        if (admob) {
+            add('');
+            add('        LinearLayout root = new LinearLayout(this);');
+            add('        root.setOrientation(LinearLayout.VERTICAL);');
+            add('        root.addView(webView, new LinearLayout.LayoutParams(');
+            add('                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));');
+            add('');
+            add('        adView = new AdView(this);');
+            add('        adView.setAdUnitId(BANNER_AD_UNIT_ID);');
+            add('        LinearLayout.LayoutParams adParams = new LinearLayout.LayoutParams(');
+            add('                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);');
+            add('        adParams.gravity = Gravity.CENTER_HORIZONTAL;');
+            add('        root.addView(adView, adParams);');
+            add('');
+            add('        setContentView(root);');
+        } else {
+            add('        setContentView(webView);');
+        }
+
+        add('');
+        add('        final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()');
+        add('                .setDomain(HOST)');
+        add('                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))');
+        add('                .build();');
+        add('');
+        add('        WebSettings settings = webView.getSettings();');
+        add('        settings.setJavaScriptEnabled(true);');
+        add('        settings.setDomStorageEnabled(true);');
+        add('        settings.setDatabaseEnabled(true);');
+        add('        settings.setMediaPlaybackRequiresUserGesture(false);');
+        add('        settings.setUseWideViewPort(true);');
+        add('        settings.setLoadWithOverviewMode(true);');
+        add('');
+        add('        webView.setWebViewClient(new WebViewClient() {');
+        add('            @Override');
+        add('            public WebResourceResponse shouldInterceptRequest(WebView view,');
+        add('                                                              WebResourceRequest request) {');
+        add('                return assetLoader.shouldInterceptRequest(request.getUrl());');
+        add('            }');
+        add('');
+        add('            @Override');
+        add('            public void onPageFinished(WebView view, String url) {');
+        add('                view.evaluateJavascript(DOWNLOAD_BRIDGE, null);');
+        add('            }');
+        add('        });');
+        add('');
+        add('        webView.setWebChromeClient(new WebChromeClient() {');
+        add('            @Override');
+        add('            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,');
+        add('                                             FileChooserParams params) {');
+        add('                fileChooserCallback = callback;');
+        add('                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);');
+        add('                intent.addCategory(Intent.CATEGORY_OPENABLE);');
+        add('                intent.setType("*/*");');
+        add('                String[] accept = params.getAcceptTypes();');
+        add('                if (accept != null && accept.length > 0 && accept[0] != null && !accept[0].isEmpty()) {');
+        add('                    intent.setType(accept[0]);');
+        add('                }');
+        add('                if (params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {');
+        add('                    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);');
+        add('                }');
+        add('                try {');
+        add('                    openFileLauncher.launch(intent);');
+        add('                } catch (Exception e) {');
+        add('                    fileChooserCallback = null;');
+        add('                    return false;');
+        add('                }');
+        add('                return true;');
+        add('            }');
+
+        if (media) {
+            add('');
+            add('            @Override');
+            add('            public void onPermissionRequest(PermissionRequest request) {');
+            add('                List<String> neededPermissions = new ArrayList<>();');
+            add('                for (String resource : request.getResources()) {');
+            add('                    String permission = toAndroidPermission(resource);');
+            add('                    if (permission != null) {');
+            add('                        neededPermissions.add(permission);');
+            add('                    }');
+            add('                }');
+            add('                if (neededPermissions.isEmpty()) {');
+            add('                    request.deny();');
+            add('                    return;');
+            add('                }');
+            add('                boolean allGranted = true;');
+            add('                for (String permission : neededPermissions) {');
+            add('                    if (ContextCompat.checkSelfPermission(MainActivity.this, permission)');
+            add('                            != PackageManager.PERMISSION_GRANTED) {');
+            add('                        allGranted = false;');
+            add('                        break;');
+            add('                    }');
+            add('                }');
+            add('                if (allGranted) {');
+            add('                    request.grant(request.getResources());');
+            add('                    return;');
+            add('                }');
+            add('                pendingPermissionRequest = request;');
+            add('                runtimePermissionLauncher.launch(neededPermissions.toArray(new String[0]));');
+            add('            }');
+        }
+
+        add('        });');
+        add('');
+        add('        webView.setDownloadListener(new DownloadListener() {');
+        add('            @Override');
+        add('            public void onDownloadStart(String url, String userAgent, String disposition,');
+        add('                                        String mimeType, long contentLength) {');
+        add('                if (url.startsWith("blob:") || url.startsWith("data:")) {');
+        add('                    return;');
+        add('                }');
+        add('                String name = URLUtil.guessFileName(url, disposition, mimeType);');
+        add('                startRemoteSave(url, name, mimeType);');
+        add('            }');
+        add('        });');
+        add('');
+        add('        webView.addJavascriptInterface(new SaveBridge(), "AndroidFileSaver");');
+        add('');
+        add('        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {');
+        add('            @Override');
+        add('            public void handleOnBackPressed() {');
+        add('                if (webView != null && webView.canGoBack()) {');
+        add('                    webView.goBack();');
+        add('                } else {');
+        add('                    setEnabled(false);');
+        add('                    getOnBackPressedDispatcher().onBackPressed();');
+        add('                }');
+        add('            }');
+        add('        });');
+
+        if (admob) {
+            add('');
+            add('        initializeAds();');
+        }
+
+        add('');
+        add('        if (savedInstanceState == null) {');
+        add('            webView.loadUrl(START_URL);');
+        add('        }');
+        add('    }');
+        add('');
+        add('    @Override');
+        add('    protected void onSaveInstanceState(@NonNull Bundle outState) {');
+        add('        super.onSaveInstanceState(outState);');
+        add('        if (webView != null) {');
+        add('            webView.saveState(outState);');
+        add('        }');
+        add('    }');
+        add('');
+        add('    @Override');
+        add('    protected void onRestoreInstanceState(@NonNull Bundle savedInstanceState) {');
+        add('        super.onRestoreInstanceState(savedInstanceState);');
+        add('        if (webView != null) {');
+        add('            webView.restoreState(savedInstanceState);');
+        add('        }');
+        add('    }');
+        add('');
+        add('    @Override');
+        add('    protected void onPause() {');
+        add('        if (webView != null) {');
+        add('            webView.onPause();');
+        add('        }');
+        if (admob) {
+            add('        if (adView != null) {');
+            add('            adView.pause();');
+            add('        }');
+        }
+        add('        super.onPause();');
+        add('    }');
+        add('');
+        add('    @Override');
+        add('    protected void onResume() {');
+        add('        super.onResume();');
+        add('        if (webView != null) {');
+        add('            webView.onResume();');
+        add('        }');
+        if (admob) {
+            add('        if (adView != null) {');
+            add('            adView.resume();');
+            add('        }');
+        }
+        add('    }');
+
+        if (media) {
+            add('');
+            add('    private static String toAndroidPermission(String webkitResource) {');
+            add('        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(webkitResource)) {');
+            add('            return Manifest.permission.CAMERA;');
+            add('        }');
+            add('        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(webkitResource)) {');
+            add('            return Manifest.permission.RECORD_AUDIO;');
+            add('        }');
+            add('        return null;');
+            add('    }');
+        }
+
+        if (admob) {
+            add('');
+            add('    private void initializeAds() {');
+            add('        ConsentRequestParameters params = new ConsentRequestParameters.Builder().build();');
+            add('        consentInformation = UserMessagingPlatform.getConsentInformation(this);');
+            add('        consentInformation.requestConsentInfoUpdate(this, params, () ->');
+            add('                UserMessagingPlatform.loadAndShowConsentFormIfRequired(this, formError -> {');
+            add('                    if (consentInformation.canRequestAds()) {');
+            add('                        startAds();');
+            add('                    }');
+            add('                }), requestError -> {');
+            add('            if (consentInformation.canRequestAds()) {');
+            add('                startAds();');
+            add('            }');
+            add('        });');
+            add('        if (consentInformation.canRequestAds()) {');
+            add('            startAds();');
+            add('        }');
+            add('    }');
+            add('');
+            add('    private void startAds() {');
+            add('        MobileAds.initialize(this, status -> loadBannerAd());');
+            add('    }');
+            add('');
+            add('    private void loadBannerAd() {');
+            add('        if (adView == null) {');
+            add('            return;');
+            add('        }');
+            add('        adView.setAdSize(getAdSize());');
+            add('        adView.loadAd(new AdRequest.Builder().build());');
+            add('    }');
+            add('');
+            add('    private AdSize getAdSize() {');
+            add('        DisplayMetrics metrics = getResources().getDisplayMetrics();');
+            add('        int adWidth = (int) (metrics.widthPixels / metrics.density);');
+            add('        return AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(this, adWidth);');
+            add('    }');
+        }
+
+        add('');
+        add('    private void startSaveBytes(byte[] data, String filename, String mime) {');
+        add('        pendingBytes = data;');
+        add('        pendingUrl = null;');
+        add('        launchSaveDialog(filename, mime);');
+        add('    }');
+        add('');
+        add('    private void startRemoteSave(String url, String filename, String mime) {');
+        add('        pendingBytes = null;');
+        add('        pendingUrl = url;');
+        add('        launchSaveDialog(filename, mime);');
+        add('    }');
+        add('');
+        add('    private void launchSaveDialog(String filename, String mime) {');
+        add('        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);');
+        add('        intent.addCategory(Intent.CATEGORY_OPENABLE);');
+        add('        intent.setType(mime == null || mime.isEmpty() ? "application/octet-stream" : mime);');
+        add('        intent.putExtra(Intent.EXTRA_TITLE,');
+        add('                filename == null || filename.isEmpty() ? "download" : filename);');
+        add('        try {');
+        add('            saveFileLauncher.launch(intent);');
+        add('        } catch (Exception e) {');
+        add('            pendingBytes = null;');
+        add('            pendingUrl = null;');
+        add('            toast("No app available to save files");');
+        add('        }');
+        add('    }');
+        add('');
+        add('    private void completeSave(Uri target) {');
+        add('        final byte[] bytes = pendingBytes;');
+        add('        final String url = pendingUrl;');
+        add('        pendingBytes = null;');
+        add('        pendingUrl = null;');
+        add('        if (target == null) {');
+        add('            return;');
+        add('        }');
+        add('        if (bytes != null) {');
+        add('            executor.execute(() -> writeBytes(target, bytes));');
+        add('        } else if (url != null) {');
+        add('            executor.execute(() -> streamToTarget(url, target));');
+        add('        }');
+        add('    }');
+        add('');
+        add('    private void writeBytes(Uri target, byte[] data) {');
+        add('        try (OutputStream out = getContentResolver().openOutputStream(target)) {');
+        add('            if (out != null) {');
+        add('                out.write(data);');
+        add('                out.flush();');
+        add('            }');
+        add('            postToast("Saved");');
+        add('        } catch (Exception e) {');
+        add('            postToast("Could not save file");');
+        add('        }');
+        add('    }');
+        add('');
+        add('    private void streamToTarget(String url, Uri target) {');
+        add('        HttpURLConnection conn = null;');
+        add('        try {');
+        add('            conn = (HttpURLConnection) new URL(url).openConnection();');
+        add('            conn.setConnectTimeout(15000);');
+        add('            conn.setReadTimeout(15000);');
+        add('            try (InputStream in = conn.getInputStream();');
+        add('                 OutputStream out = getContentResolver().openOutputStream(target)) {');
+        add('                if (out != null) {');
+        add('                    byte[] buffer = new byte[8192];');
+        add('                    int read;');
+        add('                    while ((read = in.read(buffer)) != -1) {');
+        add('                        out.write(buffer, 0, read);');
+        add('                    }');
+        add('                    out.flush();');
+        add('                }');
+        add('            }');
+        add('            postToast("Saved");');
+        add('        } catch (Exception e) {');
+        add('            postToast("Could not save file");');
+        add('        } finally {');
+        add('            if (conn != null) {');
+        add('                conn.disconnect();');
+        add('            }');
+        add('        }');
+        add('    }');
+        add('');
+        add('    private void postToast(String message) {');
+        add('        runOnUiThread(() -> toast(message));');
+        add('    }');
+        add('');
+        add('    private void toast(String message) {');
+        add('        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();');
+        add('    }');
+        add('');
+        add('    @Override');
+        add('    protected void onDestroy() {');
+        add('        executor.shutdownNow();');
+        if (admob) {
+            add('        if (adView != null) {');
+            add('            adView.destroy();');
+            add('            adView = null;');
+            add('        }');
+        }
+        add('        if (webView != null) {');
+        add('            webView.stopLoading();');
+        add('            webView.setWebChromeClient(null);');
+        add('            webView.setWebViewClient(new WebViewClient());');
+        add('            webView.removeJavascriptInterface("AndroidFileSaver");');
+        add('            webView.loadUrl("about:blank");');
+        add('            ViewParent parent = webView.getParent();');
+        add('            if (parent instanceof ViewGroup) {');
+        add('                ((ViewGroup) parent).removeView(webView);');
+        add('            }');
+        add('            webView.destroy();');
+        add('            webView = null;');
+        add('        }');
+        add('        super.onDestroy();');
+        add('    }');
+        add('');
+        add('    private class SaveBridge {');
+        add('        @JavascriptInterface');
+        add('        public void saveBase64(String base64, String filename, String mime) {');
+        add('            if (base64 == null) {');
+        add('                return;');
+        add('            }');
+        add('            final byte[] data;');
+        add('            try {');
+        add('                data = Base64.decode(base64, Base64.DEFAULT);');
+        add('            } catch (IllegalArgumentException e) {');
+        add('                return;');
+        add('            }');
+        add('            runOnUiThread(() -> startSaveBytes(data, filename, mime));');
+        add('        }');
+        add('    }');
+        add('');
+        add('    private static final String DOWNLOAD_BRIDGE =');
+
+        return lines.join('\n') + '\n' + javaStringLiteral(DOWNLOAD_BRIDGE_JS) + ';\n}\n';
     }
 
     function buildFiles(opts) {
         const pkg = opts.packageName;
         const pkgPath = pkg.replace(/\./g, '/');
         const appLabel = xmlEscape(opts.appName);
+
+        let admob = null;
+        if (opts.admob && opts.admob.enabled) {
+            admob = {
+                appId: opts.admob.useTestAds ? TEST_ADMOB_APP_ID : opts.admob.appId,
+                bannerUnitId: opts.admob.useTestAds ? TEST_ADMOB_BANNER_UNIT_ID : opts.admob.bannerUnitId
+            };
+        }
+
         const permSet = new Set();
-        if (opts.includeInternet) permSet.add('android.permission.INTERNET');
+        if (opts.includeInternet || admob) permSet.add('android.permission.INTERNET');
         (opts.permissions || []).forEach(function (p) { if (p) permSet.add(p); });
         const permissions = permSet.size
             ? Array.from(permSet).map(function (p) {
@@ -477,6 +699,8 @@
             }).join('\n') + '\n\n'
             : '';
         const cleartext = opts.allowCleartext ? 'true' : 'false';
+        const needsMediaPermissions = permSet.has('android.permission.CAMERA') ||
+            permSet.has('android.permission.RECORD_AUDIO');
 
         const files = {};
 
@@ -500,7 +724,7 @@
 
         files['build.gradle'] =
             'plugins {\n' +
-            "    id 'com.android.application' version '8.6.0' apply false\n" +
+            "    id 'com.android.application' version '9.2.0' apply false\n" +
             '}\n';
 
         files['gradle.properties'] =
@@ -512,7 +736,7 @@
         files['gradle/wrapper/gradle-wrapper.properties'] =
             'distributionBase=GRADLE_USER_HOME\n' +
             'distributionPath=wrapper/dists\n' +
-            'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-bin.zip\n' +
+            'distributionUrl=https\\://services.gradle.org/distributions/gradle-9.6.1-bin.zip\n' +
             'networkTimeout=10000\n' +
             'validateDistributionUrl=true\n' +
             'zipStoreBase=GRADLE_USER_HOME\n' +
@@ -533,6 +757,11 @@
             '    @android.webkit.JavascriptInterface <methods>;\n' +
             '}\n';
 
+        const admobDeps = admob
+            ? "    implementation 'com.google.android.gms:play-services-ads:25.4.0'\n" +
+              "    implementation 'com.google.android.ump:user-messaging-platform:4.0.0'\n"
+            : '';
+
         files['app/build.gradle'] =
             'plugins {\n' +
             "    id 'com.android.application'\n" +
@@ -540,12 +769,12 @@
             '\n' +
             'android {\n' +
             '    namespace "' + pkg + '"\n' +
-            '    compileSdk 34\n' +
+            '    compileSdk 36\n' +
             '\n' +
             '    defaultConfig {\n' +
             '        applicationId "' + pkg + '"\n' +
             '        minSdk ' + opts.minSdk + '\n' +
-            '        targetSdk 34\n' +
+            '        targetSdk 36\n' +
             '        versionCode 1\n' +
             '        versionName "1.0"\n' +
             '    }\n' +
@@ -564,14 +793,22 @@
             '}\n' +
             '\n' +
             'dependencies {\n' +
-            "    implementation 'androidx.appcompat:appcompat:1.7.0'\n" +
-            "    implementation 'androidx.webkit:webkit:1.11.0'\n" +
+            "    implementation 'androidx.appcompat:appcompat:1.7.1'\n" +
+            "    implementation 'androidx.webkit:webkit:1.16.0'\n" +
+            admobDeps +
             '}\n' +
             '\n' +
             'configurations.all {\n' +
             "    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'\n" +
             "    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'\n" +
             '}\n';
+
+        const admobMeta = admob
+            ? '        <meta-data\n' +
+              '            android:name="com.google.android.gms.ads.APPLICATION_ID"\n' +
+              '            android:value="' + admob.appId + '" />\n' +
+              '\n'
+            : '';
 
         files['app/src/main/AndroidManifest.xml'] =
             '<?xml version="1.0" encoding="utf-8"?>\n' +
@@ -586,6 +823,7 @@
             '        android:supportsRtl="true"\n' +
             '        android:theme="@style/Theme.WebAppWrapper"\n' +
             '        android:usesCleartextTraffic="' + cleartext + '">\n' +
+            admobMeta +
             '        <activity\n' +
             '            android:name=".MainActivity"\n' +
             '            android:exported="true"\n' +
@@ -598,7 +836,10 @@
             '    </application>\n' +
             '</manifest>\n';
 
-        files['app/src/main/java/' + pkgPath + '/MainActivity.java'] = mainActivity(pkg);
+        files['app/src/main/java/' + pkgPath + '/MainActivity.java'] = mainActivity(pkg, {
+            admob: admob,
+            needsMediaPermissions: needsMediaPermissions
+        });
 
         files['app/src/main/res/values/strings.xml'] =
             '<resources>\n' +
@@ -670,6 +911,13 @@
         if (pkgError) throw new Error(pkgError);
         if (!opts.appName || !opts.appName.trim()) throw new Error('App name is required.');
 
+        if (opts.admob && opts.admob.enabled && !opts.admob.useTestAds) {
+            const appIdError = validateAdmobAppId(opts.admob.appId);
+            if (appIdError) throw new Error(appIdError);
+            const unitIdError = validateAdmobAdUnitId(opts.admob.bannerUnitId);
+            if (unitIdError) throw new Error(unitIdError);
+        }
+
         const JSZip = deps.JSZip;
         const source = await JSZip.loadAsync(opts.zipData);
 
@@ -725,6 +973,8 @@
     const api = {
         generateProject: generateProject,
         validatePackage: validatePackage,
+        validateAdmobAppId: validateAdmobAppId,
+        validateAdmobAdUnitId: validateAdmobAdUnitId,
         findWebRoot: findWebRoot,
         buildFiles: buildFiles,
         isJunk: isJunk
@@ -875,10 +1125,45 @@ function validate() {
     el('pkgName').classList.toggle('invalid', !!(pkg && pkgErr));
     el('appNameError').textContent = '';
 
-    var ready = selectedFile && appName && pkg && !pkgErr;
+    var admobOn = el('optAdmob').checked;
+    var useTestAds = el('optAdmobTestAds').checked;
+    var admobOk = true;
+
+    if (admobOn && !useTestAds) {
+        var appId = el('admobAppId').value.trim();
+        var unitId = el('admobBannerUnitId').value.trim();
+        var appIdErr = window.AndroidWrapper.validateAdmobAppId(appId);
+        var unitIdErr = window.AndroidWrapper.validateAdmobAdUnitId(unitId);
+        el('admobAppIdError').textContent = appIdErr || '';
+        el('admobAppId').classList.toggle('invalid', !!appIdErr);
+        el('admobBannerUnitIdError').textContent = unitIdErr || '';
+        el('admobBannerUnitId').classList.toggle('invalid', !!unitIdErr);
+        admobOk = !appIdErr && !unitIdErr;
+    } else {
+        el('admobAppIdError').textContent = '';
+        el('admobAppId').classList.remove('invalid');
+        el('admobBannerUnitIdError').textContent = '';
+        el('admobBannerUnitId').classList.remove('invalid');
+    }
+
+    var ready = selectedFile && appName && pkg && !pkgErr && admobOk;
     goBtn.disabled = !ready;
     return ready;
 }
+
+el('optAdmob').addEventListener('change', function () {
+    el('admobPanel').hidden = !this.checked;
+    validate();
+});
+
+el('optAdmobTestAds').addEventListener('change', function () {
+    el('admobAppId').disabled = this.checked;
+    el('admobBannerUnitId').disabled = this.checked;
+    validate();
+});
+
+el('admobAppId').addEventListener('input', validate);
+el('admobBannerUnitId').addEventListener('input', validate);
 
 el('appName').addEventListener('input', validate);
 el('pkgName').addEventListener('input', validate);
@@ -972,6 +1257,13 @@ goBtn.addEventListener('click', function () {
             });
         }
 
+        var admob = el('optAdmob').checked ? {
+            enabled: true,
+            useTestAds: el('optAdmobTestAds').checked,
+            appId: el('admobAppId').value.trim(),
+            bannerUnitId: el('admobBannerUnitId').value.trim()
+        } : null;
+
         return window.AndroidWrapper.generateProject({
             zipData: buffer,
             appName: appName,
@@ -981,6 +1273,7 @@ goBtn.addEventListener('click', function () {
             allowCleartext: el('optCleartext').checked,
             permissions: selectedPermissions(),
             iconPngs: iconPngs,
+            admob: admob,
             outputType: 'blob'
         }, {
             JSZip: window.JSZip,

@@ -18,10 +18,10 @@
                     WebView, with a working save dialog and full asset access.</p>
             </div>
             <div class="stack-tag">
-                <div><b>AGP</b> 8.6.0</div>
-                <div><b>Gradle</b> 8.7</div>
+                <div><b>AGP</b> 9.2.0</div>
+                <div><b>Gradle</b> 9.6.1</div>
                 <div><b>WebViewAssetLoader</b></div>
-                <div><b>compileSdk</b> 34</div>
+                <div><b>compileSdk</b> 36</div>
             </div>
         </header>
 
@@ -66,6 +66,8 @@
                             <option value="30">Android 11 (API 30)</option>
                             <option value="33">Android 13 (API 33)</option>
                             <option value="34">Android 14 (API 34)</option>
+                            <option value="35">Android 15 (API 35)</option>
+                            <option value="36">Android 16 (API 36)</option>
                         </select>
                     </div>
 
@@ -106,6 +108,38 @@
                         </div>
                     </div>
 
+                    <div class="checks">
+                        <label class="check">
+                            <input type="checkbox" id="optAdmob">
+                            <span><span class="ct">Show a banner ad</span> <span class="cd">Adds Google AdMob with a
+                                    banner docked at the bottom of the screen, plus GDPR/UK consent handling.</span></span>
+                        </label>
+                    </div>
+
+                    <div class="subpanel" id="admobPanel" hidden>
+                        <label class="check">
+                            <input type="checkbox" id="optAdmobTestAds" checked>
+                            <span><span class="ct">Use test ad IDs</span> <span class="cd">Recommended until your
+                                    AdMob account and app are approved. Swap in your real IDs before
+                                    publishing.</span></span>
+                        </label>
+
+                        <div class="field">
+                            <label for="admobAppId">AdMob App ID</label>
+                            <input type="text" id="admobAppId" placeholder="ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX"
+                                autocomplete="off" spellcheck="false" disabled>
+                            <div class="field-error" id="admobAppIdError"></div>
+                        </div>
+
+                        <div class="field">
+                            <label for="admobBannerUnitId">Banner ad unit ID</label>
+                            <input type="text" id="admobBannerUnitId"
+                                placeholder="ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX" autocomplete="off"
+                                spellcheck="false" disabled>
+                            <div class="field-error" id="admobBannerUnitIdError"></div>
+                        </div>
+                    </div>
+
                     <button class="go" id="go" disabled>Generate project</button>
                 </div>
             </section>
@@ -137,6 +171,10 @@
                     paths and <code>fetch()</code> for images, models, and data work without CORS errors.</li>
                 <li>Downloads triggered by the page (blob, data URL, or <code>&lt;a download&gt;</code>) open the system
                     save dialog. File pickers use <code>&lt;input type="file"&gt;</code>.</li>
+                <li>If you checked Camera or Microphone, <code>getUserMedia()</code> calls from the page trigger a
+                    real Android runtime permission prompt, then feed the granted permission back to the WebView.</li>
+                <li>If you enabled AdMob, swap the test App ID and ad unit ID for your real ones before publishing,
+                    and mark the app as "Contains ads" in Play Console's app content section.</li>
             </ol>
             <p class="cap">The launcher icon is a placeholder. Replace it any time with Android Studio's Image Asset
                 tool.</p>

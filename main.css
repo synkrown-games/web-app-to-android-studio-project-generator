@@ -217,6 +217,12 @@ input.invalid {
     border-color: var(--warn);
 }
 
+input[type="text"]:disabled {
+    color: var(--faint);
+    background: var(--line);
+    cursor: not-allowed;
+}
+
 .field-error {
     color: var(--warn);
     font-size: 12px;
@@ -235,6 +241,12 @@ input.invalid {
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+.subpanel {
+    margin-top: 10px;
+    padding: 4px 14px 14px;
+    border-left: 2px solid var(--accent);
 }
 
 .check {
