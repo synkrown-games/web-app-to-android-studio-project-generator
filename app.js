@@ -759,7 +759,7 @@
 
         const admobDeps = admob
             ? "    implementation 'com.google.android.gms:play-services-ads:25.4.0'\n" +
-              "    implementation 'com.google.android.ump:user-messaging-platform:4.0.0'\n"
+            "    implementation 'com.google.android.ump:user-messaging-platform:4.0.0'\n"
             : '';
 
         files['app/build.gradle'] =
@@ -805,9 +805,9 @@
 
         const admobMeta = admob
             ? '        <meta-data\n' +
-              '            android:name="com.google.android.gms.ads.APPLICATION_ID"\n' +
-              '            android:value="' + admob.appId + '" />\n' +
-              '\n'
+            '            android:name="com.google.android.gms.ads.APPLICATION_ID"\n' +
+            '            android:value="' + admob.appId + '" />\n' +
+            '\n'
             : '';
 
         files['app/src/main/AndroidManifest.xml'] =

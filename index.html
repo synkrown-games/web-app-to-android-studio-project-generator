@@ -73,7 +73,8 @@
                     </div>
 
                     <div class="field">
-                        <label for="iconFile">App icon <span class="hint">optional, PNG/JPG — auto-generates all densities</span></label>
+                        <label for="iconFile">App icon <span class="hint">optional, PNG/JPG — auto-generates all
+                                densities</span></label>
                         <input type="file" id="iconFile" accept="image/png,image/jpeg,image/webp">
                         <div class="icon-preview" id="iconPreview" hidden>
                             <img id="iconPreviewImg" alt="icon preview">
@@ -98,14 +99,27 @@
                     <div class="field">
                         <label>App permissions <span class="hint">added to the manifest</span></label>
                         <div class="perm-grid" id="permGrid">
-                            <label class="check"><input type="checkbox" class="perm" value="android.permission.CAMERA"><span class="ct">Camera</span></label>
-                            <label class="check"><input type="checkbox" class="perm" value="android.permission.RECORD_AUDIO"><span class="ct">Microphone</span></label>
-                            <label class="check"><input type="checkbox" class="perm" value="android.permission.ACCESS_FINE_LOCATION"><span class="ct">Precise location</span></label>
-                            <label class="check"><input type="checkbox" class="perm" value="android.permission.ACCESS_COARSE_LOCATION"><span class="ct">Approx. location</span></label>
-                            <label class="check"><input type="checkbox" class="perm" value="android.permission.READ_EXTERNAL_STORAGE"><span class="ct">Read storage</span></label>
-                            <label class="check"><input type="checkbox" class="perm" value="android.permission.WRITE_EXTERNAL_STORAGE"><span class="ct">Write storage</span></label>
-                            <label class="check"><input type="checkbox" class="perm" value="android.permission.VIBRATE"><span class="ct">Vibrate</span></label>
-                            <label class="check"><input type="checkbox" class="perm" value="android.permission.READ_CONTACTS"><span class="ct">Read contacts</span></label>
+                            <label class="check"><input type="checkbox" class="perm"
+                                    value="android.permission.CAMERA"><span class="ct">Camera</span></label>
+                            <label class="check"><input type="checkbox" class="perm"
+                                    value="android.permission.RECORD_AUDIO"><span class="ct">Microphone</span></label>
+                            <label class="check"><input type="checkbox" class="perm"
+                                    value="android.permission.ACCESS_FINE_LOCATION"><span class="ct">Precise
+                                    location</span></label>
+                            <label class="check"><input type="checkbox" class="perm"
+                                    value="android.permission.ACCESS_COARSE_LOCATION"><span class="ct">Approx.
+                                    location</span></label>
+                            <label class="check"><input type="checkbox" class="perm"
+                                    value="android.permission.READ_EXTERNAL_STORAGE"><span class="ct">Read
+                                    storage</span></label>
+                            <label class="check"><input type="checkbox" class="perm"
+                                    value="android.permission.WRITE_EXTERNAL_STORAGE"><span class="ct">Write
+                                    storage</span></label>
+                            <label class="check"><input type="checkbox" class="perm"
+                                    value="android.permission.VIBRATE"><span class="ct">Vibrate</span></label>
+                            <label class="check"><input type="checkbox" class="perm"
+                                    value="android.permission.READ_CONTACTS"><span class="ct">Read
+                                    contacts</span></label>
                         </div>
                     </div>
 
@@ -113,7 +127,8 @@
                         <label class="check">
                             <input type="checkbox" id="optAdmob">
                             <span><span class="ct">Show a banner ad</span> <span class="cd">Adds Google AdMob with a
-                                    banner docked at the bottom of the screen, plus GDPR/UK consent handling.</span></span>
+                                    banner docked at the bottom of the screen, plus GDPR/UK consent
+                                    handling.</span></span>
                         </label>
                     </div>
 
@@ -167,7 +182,8 @@
                 <li>Unzip it, then in Android Studio choose <b>Open</b> and pick the unzipped folder. Let Gradle sync.
                 </li>
                 <li>Run it on a device or emulator. Your <code>index.html</code> loads from
-                    <code>app/src/main/assets/www/</code>.</li>
+                    <code>app/src/main/assets/www/</code>.
+                </li>
                 <li>Assets resolve over <code>https://appassets.androidplatform.net/assets/www/</code>, so relative
                     paths and <code>fetch()</code> for images, models, and data work without CORS errors.</li>
                 <li>Downloads triggered by the page (blob, data URL, or <code>&lt;a download&gt;</code>) open the system
