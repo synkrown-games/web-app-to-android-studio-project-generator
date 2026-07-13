@@ -242,7 +242,7 @@
         const width = opts.windowWidth || 1280;
         const height = opts.windowHeight || 800;
         const resizeMode = fullscreen ? 'NoResize' : (opts.resizable === false ? 'CanMinimize' : 'CanResize');
-        const windowState = fullscreen ? 'Normal' : (opts.startMaximized ? 'Maximized' : 'Normal');
+        const windowState = fullscreen ? 'Maximized' : (opts.startMaximized ? 'Maximized' : 'Normal');
         const windowStyleAttr = fullscreen ? '\n        WindowStyle="None"' : '';
         const iconAttr = hasIcon ? '\n        Icon="Resources/icon.ico"' : '';
 
@@ -291,15 +291,14 @@
         add('            InitializeComponent();');
         if (fullscreen) {
             add('');
-            add('            // Borderless fullscreen: WindowState.Maximized alone can leave a taskbar-sized');
-            add('            // gap, so the window is sized to the monitor explicitly instead.');
+            add('            // WindowStyle.None + WindowState.Maximized together cover the entire monitor,');
+            add('            // including the area behind the taskbar. Setting Width/Height/Left/Top manually');
+            add('            // instead does not work here: WindowStartupLocation defaults to CenterScreen,');
+            add('            // which silently overrides explicit Left/Top unless it is set to Manual, and the');
+            add('            // window ends up centered a few pixels short of the screen edge.');
             add('            WindowStyle = WindowStyle.None;');
             add('            ResizeMode = ResizeMode.NoResize;');
-            add('            WindowState = WindowState.Normal;');
-            add('            Left = 0;');
-            add('            Top = 0;');
-            add('            Width = SystemParameters.PrimaryScreenWidth;');
-            add('            Height = SystemParameters.PrimaryScreenHeight;');
+            add('            WindowState = WindowState.Maximized;');
             add('            Topmost = true;');
         }
         add('            Loaded += MainWindow_Loaded;');
