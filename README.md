@@ -1,6 +1,7 @@
-# Web App to Android Studio Project
+# Web App to Android Studio Project + Web App to Visual Studio C# Project
 
-https://synkrown-games.github.io/web-app-to-android-studio-project-generator/
+[Android Studio Converter](https://synkrown-games.github.io/web-app-to-android-studio-project-generator/)
+[Visual Studio converter](https://synkrown-games.github.io/web-app-to-android-studio-project-generator/windows/index.html)
 
 A small browser-based tool that takes a zipped web app and turns it into a complete, ready-to-open Android Studio project. The output wraps your app in a WebView, serves it from local assets instead of a live URL, and comes with working file downloads and file picking out of the box.
 
