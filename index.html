@@ -94,6 +94,12 @@
                             <span><span class="ct">Allow cleartext http</span> <span class="cd">Only needed if your app
                                     loads plain http:// URLs.</span></span>
                         </label>
+                        <label class="check">
+                            <input type="checkbox" id="optFullscreen">
+                            <span><span class="ct">Fullscreen (immersive)</span> <span class="cd">Hides the status
+                                    and navigation bars for an edge-to-edge, distraction-free window. Good for
+                                    games.</span></span>
+                        </label>
                     </div>
 
                     <div class="field">
@@ -192,6 +198,8 @@
                     real Android runtime permission prompt, then feed the granted permission back to the WebView.</li>
                 <li>If you enabled AdMob, swap the test App ID and ad unit ID for your real ones before publishing,
                     and mark the app as "Contains ads" in Play Console's app content section.</li>
+                <li>If you turned on Fullscreen, the status and navigation bars stay hidden until the user swipes
+                    from a screen edge, then they auto-hide again.</li>
             </ol>
             <p class="cap">The launcher icon is a placeholder. Replace it any time with Android Studio's Image Asset
                 tool.</p>

@@ -75,7 +75,16 @@
                         </div>
                     </div>
 
-                    <div class="row">
+                    <div class="checks">
+                        <label class="check">
+                            <input type="checkbox" id="optFullscreen">
+                            <span><span class="ct">Fullscreen (borderless)</span> <span class="cd">Covers the whole
+                                    screen with no title bar or borders, on top of everything else. Good for
+                                    games. Overrides window size, resizing, and start-maximized below.</span></span>
+                        </label>
+                    </div>
+
+                    <div id="windowSizeRow" class="row">
                         <div class="field">
                             <label for="windowWidth">Window width</label>
                             <input type="text" id="windowWidth" placeholder="1280" inputmode="numeric"
@@ -99,7 +108,7 @@
                         <div class="field-error" id="iconFileError"></div>
                     </div>
 
-                    <div class="checks">
+                    <div id="windowSizeChecks" class="checks">
                         <label class="check">
                             <input type="checkbox" id="optResizable" checked>
                             <span><span class="ct">Resizable window</span> <span class="cd">Off locks the window to
@@ -108,8 +117,11 @@
                         <label class="check">
                             <input type="checkbox" id="optMaximized">
                             <span><span class="ct">Start maximized</span> <span class="cd">Opens the window
-                                    full-screen on launch instead of at the configured size.</span></span>
+                                    maximized, with its title bar, instead of at the configured size.</span></span>
                         </label>
+                    </div>
+
+                    <div class="checks">
                         <label class="check">
                             <input type="checkbox" id="optDevTools" checked>
                             <span><span class="ct">Enable DevTools (F12)</span> <span class="cd">Lets you inspect
@@ -120,6 +132,12 @@
                             <span><span class="ct">Open external links in the default browser</span> <span
                                     class="cd">Keeps the app window on your bundled pages; http(s) links to other
                                     domains open outside the app instead of navigating away inside it.</span></span>
+                        </label>
+                        <label class="check">
+                            <input type="checkbox" id="optCloseOnEscape">
+                            <span><span class="ct">Press Escape to close</span> <span class="cd">Useful if your app
+                                    has no close button of its own — common for games, especially in fullscreen.
+                                    Skip this if Escape already means something in your app.</span></span>
                         </label>
                     </div>
 
@@ -163,6 +181,8 @@
                     they work out of the box.</li>
                 <li>The machine running the exe needs the WebView2 Runtime, which already ships with Windows 11 and
                     most Windows 10 installs.</li>
+                <li>If you turned on Fullscreen, the window covers the whole screen with no title bar — pair it
+                    with "Press Escape to close" unless your app already has its own way to exit.</li>
             </ol>
             <p class="cap">The app icon is a placeholder unless you upload your own image.</p>
         </div>

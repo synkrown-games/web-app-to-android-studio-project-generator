@@ -238,10 +238,12 @@
     }
 
     function mainWindowXaml(ns, opts, hasIcon) {
+        const fullscreen = !!opts.fullscreen;
         const width = opts.windowWidth || 1280;
         const height = opts.windowHeight || 800;
-        const resizeMode = opts.resizable === false ? 'CanMinimize' : 'CanResize';
-        const windowState = opts.startMaximized ? 'Maximized' : 'Normal';
+        const resizeMode = fullscreen ? 'NoResize' : (opts.resizable === false ? 'CanMinimize' : 'CanResize');
+        const windowState = fullscreen ? 'Normal' : (opts.startMaximized ? 'Maximized' : 'Normal');
+        const windowStyleAttr = fullscreen ? '\n        WindowStyle="None"' : '';
         const iconAttr = hasIcon ? '\n        Icon="Resources/icon.ico"' : '';
 
         return '<Window x:Class="' + ns + '.MainWindow"\n' +
@@ -253,7 +255,7 @@
             '        MinWidth="480" MinHeight="360"\n' +
             '        WindowStartupLocation="CenterScreen"\n' +
             '        ResizeMode="' + resizeMode + '"\n' +
-            '        WindowState="' + windowState + '"' + iconAttr + '>\n' +
+            '        WindowState="' + windowState + '"' + windowStyleAttr + iconAttr + '>\n' +
             '    <Grid>\n' +
             '        <wv2:WebView2 x:Name="WebView" />\n' +
             '    </Grid>\n' +
@@ -263,6 +265,8 @@
     function mainWindowXamlCs(ns, opts) {
         const devTools = opts.devTools !== false;
         const openExternalLinks = opts.openExternalLinks !== false;
+        const fullscreen = !!opts.fullscreen;
+        const closeOnEscape = !!opts.closeOnEscape;
 
         const lines = [];
         function add(s) { lines.push(s); }
@@ -285,6 +289,19 @@
         add('        public MainWindow()');
         add('        {');
         add('            InitializeComponent();');
+        if (fullscreen) {
+            add('');
+            add('            // Borderless fullscreen: WindowState.Maximized alone can leave a taskbar-sized');
+            add('            // gap, so the window is sized to the monitor explicitly instead.');
+            add('            WindowStyle = WindowStyle.None;');
+            add('            ResizeMode = ResizeMode.NoResize;');
+            add('            WindowState = WindowState.Normal;');
+            add('            Left = 0;');
+            add('            Top = 0;');
+            add('            Width = SystemParameters.PrimaryScreenWidth;');
+            add('            Height = SystemParameters.PrimaryScreenHeight;');
+            add('            Topmost = true;');
+        }
         add('            Loaded += MainWindow_Loaded;');
         add('        }');
         add('');
@@ -316,6 +333,18 @@
         add('            core.WebResourceRequested += OnWebResourceRequested;');
         if (openExternalLinks) {
             add('            core.NavigationStarting += OnNavigationStarting;');
+        }
+        if (closeOnEscape) {
+            add('');
+            add('            // The page itself owns the keyboard once it has focus, so Escape is caught in');
+            add('            // JS and relayed back over postMessage rather than as a native accelerator key.');
+            add('            await core.AddScriptToExecuteOnDocumentCreatedAsync(');
+            add('                "window.addEventListener(\'keydown\', function (e) { " +');
+            add('                "if (e.key === \'Escape\') { window.chrome.webview.postMessage(\'close-app\'); } });");');
+            add('            core.WebMessageReceived += (s2, e2) =>');
+            add('            {');
+            add('                if (e2.TryGetWebMessageAsString() == "close-app") Close();');
+            add('            };');
         }
         add('');
         add('            core.Navigate(StartUrl);');
@@ -694,6 +723,12 @@ if (typeof document !== 'undefined') {
     el('appName').addEventListener('input', validate);
     el('namespace').addEventListener('input', validate);
 
+    el('optFullscreen').addEventListener('change', function () {
+        var fullscreen = this.checked;
+        el('windowSizeRow').hidden = fullscreen;
+        el('windowSizeChecks').hidden = fullscreen;
+    });
+
     function logReset() { logEl.innerHTML = ''; }
     function logLine(text, isError) {
         var line = document.createElement('div');
@@ -803,6 +838,8 @@ if (typeof document !== 'undefined') {
                 startMaximized: el('optMaximized').checked,
                 devTools: el('optDevTools').checked,
                 openExternalLinks: el('optExternalLinks').checked,
+                fullscreen: el('optFullscreen').checked,
+                closeOnEscape: el('optCloseOnEscape').checked,
                 iconIco: iconIco,
                 outputType: 'blob'
             }, {
