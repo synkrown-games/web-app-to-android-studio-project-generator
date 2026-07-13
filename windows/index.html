@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Web App to Windows .exe Project</title>
+    <link rel="stylesheet" href="../main.css">
+</head>
+
+<body>
+    <div class="shell">
+
+        <header class="masthead">
+            <div>
+                <p class="crumb"><a href="../index.html">&larr; Web App to Android Studio Project</a></p>
+                <h1>Web App to Windows .exe Project</h1>
+                <p>Drop in a zip of your web app and get a complete Visual Studio C# project that runs it offline in
+                    a native window, with index.html, JS, and CSS compiled straight into the exe.</p>
+            </div>
+            <div class="stack-tag">
+                <div><b>WPF</b> + WebView2</div>
+                <div><b>C#</b> / .NET 8+</div>
+                <div><b>NuGet</b> Microsoft.Web.WebView2</div>
+            </div>
+        </header>
+
+        <div class="grid">
+
+            <section class="card">
+                <div class="card-head"><span class="idx">01</span>
+                    <h2>Configure</h2>
+                </div>
+                <div class="card-body">
+
+                    <div class="drop" id="drop">
+                        <input type="file" id="file" accept=".zip,application/zip" hidden>
+                        <div id="dropIdle">
+                            <div class="drop-title">Drop your web app zip here</div>
+                            <div class="drop-sub">or click to browse. Must contain an index.html.</div>
+                        </div>
+                        <div id="dropLoaded" hidden>
+                            <div class="drop-file" id="fileName"></div>
+                            <div class="drop-meta" id="fileMeta"></div>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label for="appName">App name</label>
+                        <input type="text" id="appName" placeholder="My Web App" autocomplete="off">
+                        <div class="field-error" id="appNameError"></div>
+                    </div>
+
+                    <div class="field">
+                        <label for="namespace">Namespace <span class="hint">root namespace &amp; assembly
+                                name</span></label>
+                        <input type="text" id="namespace" placeholder="Contoso.MyWebApp" autocomplete="off"
+                            spellcheck="false">
+                        <div class="field-error" id="namespaceError"></div>
+                    </div>
+
+                    <div class="row">
+                        <div class="field">
+                            <label for="targetFramework">Target framework</label>
+                            <select id="targetFramework">
+                                <option value="net8.0-windows">.NET 8 (LTS)</option>
+                                <option value="net9.0-windows">.NET 9</option>
+                                <option value="net10.0-windows">.NET 10</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="appVersion">App version</label>
+                            <input type="text" id="appVersion" placeholder="1.0.0" autocomplete="off"
+                                spellcheck="false">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="field">
+                            <label for="windowWidth">Window width</label>
+                            <input type="text" id="windowWidth" placeholder="1280" inputmode="numeric"
+                                autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label for="windowHeight">Window height</label>
+                            <input type="text" id="windowHeight" placeholder="800" inputmode="numeric"
+                                autocomplete="off">
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label for="iconFile">App icon <span class="hint">optional, PNG/JPG — packed into a
+                                Windows .ico</span></label>
+                        <input type="file" id="iconFile" accept="image/png,image/jpeg,image/webp">
+                        <div class="icon-preview" id="iconPreview" hidden>
+                            <img id="iconPreviewImg" alt="icon preview">
+                            <span id="iconPreviewMeta"></span>
+                        </div>
+                        <div class="field-error" id="iconFileError"></div>
+                    </div>
+
+                    <div class="checks">
+                        <label class="check">
+                            <input type="checkbox" id="optResizable" checked>
+                            <span><span class="ct">Resizable window</span> <span class="cd">Off locks the window to
+                                    its starting size (still minimizable).</span></span>
+                        </label>
+                        <label class="check">
+                            <input type="checkbox" id="optMaximized">
+                            <span><span class="ct">Start maximized</span> <span class="cd">Opens the window
+                                    full-screen on launch instead of at the configured size.</span></span>
+                        </label>
+                        <label class="check">
+                            <input type="checkbox" id="optDevTools" checked>
+                            <span><span class="ct">Enable DevTools (F12)</span> <span class="cd">Lets you inspect
+                                    the page at runtime. Turn off for a release build.</span></span>
+                        </label>
+                        <label class="check">
+                            <input type="checkbox" id="optExternalLinks" checked>
+                            <span><span class="ct">Open external links in the default browser</span> <span
+                                    class="cd">Keeps the app window on your bundled pages; http(s) links to other
+                                    domains open outside the app instead of navigating away inside it.</span></span>
+                        </label>
+                    </div>
+
+                    <button class="go" id="go" disabled>Generate project</button>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-head"><span class="idx">02</span>
+                    <h2>Output</h2>
+                </div>
+                <div class="out-body">
+                    <div class="log" id="log"><span class="placeholder">Build log will appear here.</span></div>
+                    <div class="tree" id="tree"></div>
+                    <div class="result" id="result">
+                        <div class="summary" id="summary"></div>
+                        <a class="download" id="download" download>Download project zip</a>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+
+        <div class="notes">
+            <h3>After you download</h3>
+            <ol>
+                <li>Unzip it, then open the <code>.sln</code> file in Visual Studio 2022 (with the "\.NET desktop
+                    development" workload installed).</li>
+                <li>Let NuGet restore <code>Microsoft.Web.WebView2</code> — this needs internet access the first
+                    time.</li>
+                <li>Press F5, or build in Release. Your <code>index.html</code> loads from
+                    <code>https://app.local/index.html</code>, a virtual address backed by resources embedded in
+                    the exe.</li>
+                <li>Relative paths and <code>fetch()</code> calls for CSS, scripts, and other assets work the same
+                    way they did in the browser, without any CORS errors.</li>
+                <li>Anything that isn't HTML, JS, or CSS (models, textures, data files, other folders) is copied
+                    next to the exe in an <code>AppAssets</code> folder on every build. When you distribute the
+                    app, ship the whole output folder, not just the exe.</li>
+                <li>Downloads and <code>&lt;input type="file"&gt;</code> pickers use WebView2's native dialogs, so
+                    they work out of the box.</li>
+                <li>The machine running the exe needs the WebView2 Runtime, which already ships with Windows 11 and
+                    most Windows 10 installs.</li>
+            </ol>
+            <p class="cap">The app icon is a placeholder unless you upload your own image.</p>
+        </div>
+
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="windows-app.js"></script>
+</body>
+
+</html>

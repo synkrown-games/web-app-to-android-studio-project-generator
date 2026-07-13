@@ -4,6 +4,8 @@ A small browser-based tool that takes a zipped web app and turns it into a compl
 
 Everything runs client-side. You drop in a zip, fill in a couple of fields, and get back a project zip you can unpack and open directly in Android Studio.
 
+There's also a companion converter for Windows desktop: [windows/index.html](windows/index.html), linked from the top of this page, turns the same kind of zip into a Visual Studio C# (WPF + WebView2) project that builds into a `.exe`. See [Windows .exe converter](#windows-exe-converter) below.
+
 ## Why this exists
 
 Wrapping a web app in a WebView sounds simple until you actually try it. You end up dealing with asset loading and CORS issues, downloads that silently fail because blob and data URLs don't trigger the normal Android download flow, file inputs that don't open a picker, and a manifest and Gradle setup you have to get right every time.
@@ -72,3 +74,17 @@ Checking "Show a banner ad" adds a bottom-docked adaptive banner alongside the W
 
 - A recent version of Android Studio to open the generated project.
 - Nothing beyond a browser to run the generator itself. It pulls in JSZip from a CDN for zip handling.
+
+## Windows .exe converter
+
+[windows/index.html](windows/index.html) is a second, independent converter (own HTML and JS, [windows/windows-app.js](windows/windows-app.js)) that turns the same kind of zip into a Visual Studio C# project instead of an Android Studio one.
+
+The generated project is a WPF app that hosts a [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) control:
+
+- `index.html`, and any `.js`/`.css` files in the zip, are embedded directly into the `.exe` as resources (via `<EmbeddedResource>` with an explicit `<LogicalName>` per file) — there's nothing to unzip or find on disk for the app itself to run.
+- Everything else (models, textures, data files, other folders) is copied next to the `.exe` on every build, into an `AppAssets` folder, and treated as a normal accompanying resource rather than being baked in.
+- At runtime, `MainWindow.xaml.cs` intercepts every request to a virtual `https://app.local/...` origin via `WebResourceRequested`: it serves embedded files straight from the assembly's manifest resources, and falls back to reading matching files out of `AppAssets` on disk. Both are served from the same origin, so relative paths and `fetch()` calls work exactly like they did in a browser, with no CORS errors — the same problem the Android converter solves with `WebViewAssetLoader`.
+  (`SetVirtualHostNameToFolderMapping` is deliberately not used for this: WebView2 does not raise `WebResourceRequested` for a host that also has a virtual folder mapping, so combining the two would silently stop the embedded files from ever being served.)
+- Downloads and `<input type="file">` pickers use WebView2's native dialogs, so no extra glue code is needed there (unlike the Android side, which has to bridge blob/data URLs to a native save dialog itself).
+
+Requirements: Visual Studio 2022 with the ".NET desktop development" workload, and the WebView2 Runtime on the machine that runs the `.exe` (already present on Windows 11 and most Windows 10 installs).
