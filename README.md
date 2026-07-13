@@ -6,7 +6,7 @@ A small browser-based tool that takes a zipped web app and turns it into a compl
 
 Everything runs client-side. You drop in a zip, fill in a couple of fields, and get back a project zip you can unpack and open directly in Android Studio.
 
-There's also a companion converter for Windows desktop: [windows/index.html](windows/index.html), linked from the top of this page, turns the same kind of zip into a Visual Studio C# (WPF + WebView2) project that builds into a `.exe`. See [Windows .exe converter](#windows-exe-converter) below.
+There's also a companion converter for Windows desktop: [windows/index.html](windows/index.html), linked from the top of this page, turns the same kind of zip into a Visual Studio C# (WPF + WebView2) project that builds into a `.exe`. See [Windows .exe converter](https://synkrown-games.github.io/web-app-to-android-studio-project-generator/windows/index.html) below.
 
 ## Why this exists
 
