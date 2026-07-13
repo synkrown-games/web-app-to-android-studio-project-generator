@@ -80,5 +80,6 @@ Checking "Show a banner ad" adds a bottom-docked adaptive banner alongside the W
 - Nothing beyond a browser to run the generator itself. It pulls in JSZip from a CDN for zip handling.
 
 
-Donations would be greatly appreciated to help support me to create more useful applications :).
+Donations would be greatly appreciated to help support me to create more useful applications :)
+
 [Buy Me A Coffee](https://buymeacoffee.com/synkrown)
