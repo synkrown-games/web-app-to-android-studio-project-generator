@@ -45,6 +45,15 @@
                         </div>
                     </div>
 
+                    <div class="field" id="fileListWrap" hidden>
+                        <label>Files to embed <span class="hint">uncheck a file to ship it externally next to the exe instead</span></label>
+                        <div class="filelist-actions">
+                            <button type="button" class="linklike" id="selectAllFiles">Embed all</button>
+                            <button type="button" class="linklike" id="selectExternalMedia">External: images &amp; media</button>
+                        </div>
+                        <div class="filelist" id="fileList"></div>
+                    </div>
+
                     <div class="field">
                         <label for="appName">App name</label>
                         <input type="text" id="appName" placeholder="My Web App" autocomplete="off">
@@ -136,6 +145,13 @@
                             <span><span class="ct">Press Escape to close</span> <span class="cd">Useful if your app
                                     has no close button of its own  common for games, especially in fullscreen.
                                     Skip this if Escape already means something in your app.</span></span>
+                        </label>
+
+                        <label class="check">
+                            <input type="checkbox" id="optConfirmClose">
+                            <span><span class="ct">Confirm before closing</span> <span class="cd">Asks "Are you sure?" when the
+                                    user tries to close the window. Useful for apps where accidental closes lose
+                                    progress.</span></span>
                         </label>
                         
                         <label class="check">

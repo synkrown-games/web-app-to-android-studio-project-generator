@@ -48,6 +48,18 @@
         return parts.some(function (part) { return JUNK_NAMES.has(part); });
     }
 
+    var extracted = null;          // { webRoot, files: [{relPath, bytes}] }
+    var embedState = new Map();    // relPath -> true (embed) / false (external)
+
+    var MEDIA_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.mp4', '.mp3',
+        '.wav', '.ogg', '.woff', '.woff2', '.ttf', '.glb', '.gltf', '.bin'];
+
+    function isMediaExt(relPath) {
+        var dot = relPath.lastIndexOf('.');
+        if (dot === -1) return false;
+        return MEDIA_EXTS.indexOf(relPath.slice(dot).toLowerCase()) !== -1;
+    }
+
     // Files with these extensions get compiled into the exe as embedded resources.
     // Everything else accompanies the exe as a normal file on disk.
     const WEB_EXTENSIONS = new Set(['.html', '.htm', '.js', '.mjs', '.css']);
@@ -263,7 +275,7 @@
         ].join('\r\n');
     }
 
-    function csprojFile(ns, opts, files, hasIcon) {
+    function csprojFile(ns, opts, embeddedFiles, externalFiles, hasIcon) {
         const tfm = TARGET_FRAMEWORKS.has(opts.targetFramework) ? opts.targetFramework : 'net8.0-windows';
         const version = (opts.appVersion && opts.appVersion.trim()) ? opts.appVersion.trim() : '1.0.0';
 
@@ -299,13 +311,26 @@
         add('');
         add('  <ItemGroup>');
         add('    <None Remove="Resources\\Web\\**\\*" />');
-        for (const f of files) {
+        for (const f of embeddedFiles) {
             const includePath = 'Resources\\Web\\' + f.relPath.split('/').join('\\');
             add('    <EmbeddedResource Include="' + xmlEscape(includePath) + '">');
             add('      <LogicalName>' + xmlEscape('web/' + f.relPath) + '</LogicalName>');
             add('    </EmbeddedResource>');
         }
         add('  </ItemGroup>');
+
+        if (externalFiles.length > 0) {
+            add('');
+            add('  <ItemGroup>');
+            add('    <None Remove="Assets\\**\\*" />');
+            for (const f of externalFiles) {
+                const includePath = 'Assets\\' + f.relPath.split('/').join('\\');
+                add('    <Content Include="' + xmlEscape(includePath) + '">');
+                add('      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>');
+                add('    </Content>');
+            }
+            add('  </ItemGroup>');
+        }
 
         add('');
         add('</Project>');
@@ -362,6 +387,7 @@
         const openExternalLinks = opts.openExternalLinks !== false;
         const fullscreen = !!opts.fullscreen;
         const closeOnEscape = !!opts.closeOnEscape;
+        const confirmClose = !!opts.confirmClose;
         const lockdown = !!opts.lockdown;
 
         const lines = [];
@@ -371,6 +397,7 @@
         add('using System.IO;');
         add('using System.Reflection;');
         add('using System.Windows;');
+        if (confirmClose) add('using System.ComponentModel;');
         if (cryptoInfo) add('using System.Security.Cryptography;');
         add('using Microsoft.Web.WebView2.Core;');
         add('using Microsoft.Web.WebView2.Wpf;');
@@ -390,7 +417,10 @@
             add('        private const string EncSaltHex = "' + cryptoInfo.saltHex + '";');
             add('        private const string EncPassword = ' + JSON.stringify(cryptoInfo.password) + ';');
             add('        private const int EncIterations = ' + cryptoInfo.iterations + ';');
-            add('        private static readonly byte[] EncKey = DeriveKey();');
+            add('        private static readonly byte[]? EncKey = DeriveKey();');
+        } else {
+            add('');
+            add('        private static readonly byte[]? EncKey = null;');
         }
 
         add('');
@@ -400,13 +430,19 @@
         if (fullscreen) {
             add('');
             add('            // WindowStyle.None + WindowState.Maximized together cover the entire monitor,');
-            add('            // including the area behind the taskbar.');
+            add('            // including the area behind the taskbar. Setting Width/Height/Left/Top manually');
+            add('            // instead does not work here: WindowStartupLocation defaults to CenterScreen,');
+            add('            // which silently overrides explicit Left/Top unless it is set to Manual, and the');
+            add('            // window ends up centered a few pixels short of the screen edge.');
             add('            WindowStyle = WindowStyle.None;');
             add('            ResizeMode = ResizeMode.NoResize;');
             add('            WindowState = WindowState.Maximized;');
             add('            Topmost = true;');
         }
         add('            Loaded += MainWindow_Loaded;');
+        if (confirmClose) {
+            add('            Closing += MainWindow_Closing;');
+        }
         add('        }');
         add('');
         add('        private async void MainWindow_Loaded(object sender, RoutedEventArgs e)');
@@ -444,9 +480,13 @@
         add('            core.AddWebResourceRequestedFilter(');
         add('                $"https://{HostName}/*", CoreWebView2WebResourceContext.All);');
         add('            core.WebResourceRequested += OnWebResourceRequested;');
-        if (openExternalLinks) add('            core.NavigationStarting += OnNavigationStarting;');
+        if (openExternalLinks) {
+            add('            core.NavigationStarting += OnNavigationStarting;');
+        }
         if (closeOnEscape) {
             add('');
+            add('            // The page itself owns the keyboard once it has focus, so Escape is caught in');
+            add('            // JS and relayed back over postMessage rather than as a native accelerator key.');
             add('            await core.AddScriptToExecuteOnDocumentCreatedAsync(');
             add('                "window.addEventListener(\'keydown\', function (e) { " +');
             add('                "if (e.key === \'Escape\') { window.chrome.webview.postMessage(\'close-app\'); } });");');
@@ -458,9 +498,29 @@
         add('');
         add('            core.Navigate(StartUrl);');
         add('        }');
+        if (confirmClose) {
+            add('');
+            add('        private void MainWindow_Closing(object? sender, CancelEventArgs e)');
+            add('        {');
+            add('            var result = MessageBox.Show(');
+            add('                this,');
+            add('                "Are you sure you want to close this application?",');
+            add('                "Confirm Close",');
+            add('                MessageBoxButton.YesNo,');
+            add('                MessageBoxImage.Question,');
+            add('                MessageBoxResult.No);');
+            add('');
+            add('            if (result != MessageBoxResult.Yes)');
+            add('            {');
+            add('                e.Cancel = true;');
+            add('            }');
+            add('        }');
+        }
         add('');
-        add('        // Serves every embedded file by its original relative path, decrypting on the fly');
-        add('        // for files that were encrypted at build time.');
+        add('        // Serves every embedded/external file by its original relative path. Only files that');
+        add('        // need decrypting (js/html/css control code) are buffered into memory -- everything');
+        add('        // else (textures, models, audio) streams straight through, which matters once the app');
+        add('        // ships large binary assets.');
         add('        private void OnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)');
         add('        {');
         add('            Uri uri;');
@@ -470,38 +530,54 @@
         add('            string path = Uri.UnescapeDataString(uri.AbsolutePath.TrimStart(\'/\'));');
         add('            if (path.Length == 0) path = "index.html";');
         add('');
-        add('            Stream? resourceStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("web/" + path);');
-        add('            if (resourceStream == null)');
+        add('            Stream? sourceStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("web/" + path);');
+        add('            bool ownsStream = false;');
+        add('');
+        add('            if (sourceStream == null)');
+        add('            {');
+        add('                // Not embedded -- check for it as an external asset shipped alongside the exe.');
+        add('                // GetFullPath + StartsWith guards against ".." path traversal from a crafted request.');
+        add('                string assetsRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "Assets"));');
+        add('                string assetPath = Path.GetFullPath(Path.Combine(assetsRoot, path));');
+        add('                if (assetPath.StartsWith(assetsRoot, StringComparison.OrdinalIgnoreCase) && File.Exists(assetPath))');
+        add('                {');
+        add('                    sourceStream = File.OpenRead(assetPath);');
+        add('                    ownsStream = true;');
+        add('                }');
+        add('            }');
+        add('');
+        add('            if (sourceStream == null)');
         add('            {');
         add('                e.Response = WebView.CoreWebView2.Environment.CreateWebResourceResponse(');
         add('                    null, 404, "Not Found", "");');
         add('                return;');
         add('            }');
         add('');
-
-        if (cryptoInfo) {
-            add('            byte[] raw;');
-            add('            using (var ms = new MemoryStream())');
-            add('            {');
-            add('                resourceStream.CopyTo(ms);');
-            add('                raw = ms.ToArray();');
-            add('            }');
-            add('');
-            add('            string ext = Path.GetExtension(path).ToLowerInvariant();');
-            add('            byte[] payload = (ext is ".js" or ".mjs" or ".html" or ".htm") ? Decrypt(raw) : raw;');
-            add('            Stream content = new MemoryStream(payload);');
-        } else {
-            add('            Stream content = resourceStream;');
-        }
-
+        add('            string ext = Path.GetExtension(path).ToLowerInvariant();');
+        add('            bool needsDecrypt = EncKey != null && ext is ".js" or ".mjs" or ".html" or ".htm";');
+        add('');
+        add('            Stream responseStream;');
+        add('            if (needsDecrypt)');
+        add('            {');
+        add('                using var ms = new MemoryStream();');
+        add('                sourceStream.CopyTo(ms);');
+        add('                if (ownsStream) sourceStream.Dispose();');
+        add('                responseStream = new MemoryStream(Decrypt(ms.ToArray()));');
+        add('            }');
+        add('            else');
+        add('            {');
+        add('                responseStream = sourceStream;');
+        add('            }');
         add('');
         add('            string headers = "Content-Type: " + ContentTypeFor(path) + "\\r\\nCache-Control: no-cache";');
         add('            e.Response = WebView.CoreWebView2.Environment.CreateWebResourceResponse(');
-        add('                content, 200, "OK", headers);');
+        add('                responseStream, 200, "OK", headers);');
         add('        }');
 
         if (openExternalLinks) {
             add('');
+            add('        // Keeps the app itself inside this window, but sends http(s) links that point');
+            add('        // away from the bundled app out to the user\'s default browser.');
             add('        private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)');
             add('        {');
             add('            Uri uri;');
@@ -525,21 +601,24 @@
             add('            using var pbkdf2 = new Rfc2898DeriveBytes(EncPassword, salt, EncIterations, HashAlgorithmName.SHA256);');
             add('            return pbkdf2.GetBytes(32);');
             add('        }');
-            add('');
-            add('        // Ciphertext layout matches the browser-side WebCrypto AES-GCM output:');
-            add('        // [12-byte IV][ciphertext][16-byte auth tag].');
-            add('        private static byte[] Decrypt(byte[] blob)');
-            add('        {');
-            add('            const int ivLen = 12, tagLen = 16;');
-            add('            byte[] iv = blob[0..ivLen];');
-            add('            byte[] tag = blob[^tagLen..];');
-            add('            byte[] cipherText = blob[ivLen..^tagLen];');
-            add('            byte[] plain = new byte[cipherText.Length];');
-            add('            using var aesGcm = new AesGcm(EncKey, tagLen);');
-            add('            aesGcm.Decrypt(iv, cipherText, tag, plain);');
-            add('            return plain;');
-            add('        }');
         }
+
+        add('');
+        add('        // Ciphertext layout matches the browser-side WebCrypto AES-GCM output:');
+        add('        // [12-byte IV][ciphertext][16-byte auth tag]. If no password was configured,');
+        add('        // EncKey is null and the bytes are returned unchanged.');
+        add('        private static byte[] Decrypt(byte[] blob)');
+        add('        {');
+        add('            if (EncKey == null) return blob;');
+        add('            const int ivLen = 12, tagLen = 16;');
+        add('            byte[] iv = blob[0..ivLen];');
+        add('            byte[] tag = blob[^tagLen..];');
+        add('            byte[] cipherText = blob[ivLen..^tagLen];');
+        add('            byte[] plain = new byte[cipherText.Length];');
+        add('            using var aesGcm = new AesGcm(EncKey, tagLen);');
+        add('            aesGcm.Decrypt(iv, cipherText, tag, plain);');
+        add('            return plain;');
+        add('        }');
 
         add('');
         add('        private static string ContentTypeFor(string path)');
@@ -635,13 +714,13 @@
         ].join('\n');
     }
 
-    function buildProjectFiles(opts, files, hasIcon, cryptoInfo) {
+    function buildProjectFiles(opts, embeddedFiles, externalFiles, hasIcon, cryptoInfo) {
         const ns = opts.namespace;
         const out = {};
         const projectGuid = guid();
 
         out[ns + '.sln'] = slnFile(ns, projectGuid);
-        out[ns + '/' + ns + '.csproj'] = csprojFile(ns, opts, files, hasIcon);
+        out[ns + '/' + ns + '.csproj'] = csprojFile(ns, opts, embeddedFiles, externalFiles, hasIcon);
         out[ns + '/App.xaml'] = appXaml(ns);
         out[ns + '/App.xaml.cs'] = appXamlCs(ns);
         out[ns + '/MainWindow.xaml'] = mainWindowXaml(ns, opts, hasIcon);
@@ -651,14 +730,13 @@
         return out;
     }
 
-    // Main entry. deps: { JSZip }
-    async function generateProject(opts, deps) {
-        const nsError = validateNamespace(opts.namespace);
-        if (nsError) throw new Error(nsError);
-        if (!opts.appName || !opts.appName.trim()) throw new Error('App name is required.');
-
+    // Extracts and returns the web-app files from a zip, stripping junk and rebasing
+    // everything relative to the discovered web root. Shared by the file-list preview
+    // (before Generate is clicked) and generateProject (which reuses the cached result
+    // if the caller already extracted it).
+    async function extractWebFiles(zipData, deps) {
         const JSZip = deps.JSZip;
-        const source = await JSZip.loadAsync(opts.zipData);
+        const source = await JSZip.loadAsync(zipData);
 
         const entries = [];
         source.forEach(function (relPath, entry) {
@@ -681,25 +759,50 @@
         }
         if (files.length === 0) throw new Error('No files were found to embed.');
 
+        files.sort(function (a, b) { return a.relPath.localeCompare(b.relPath); });
+        return { webRoot: webRoot, files: files };
+    }
+
+    // Main entry. deps: { JSZip }
+    async function generateProject(opts, deps) {
+        const nsError = validateNamespace(opts.namespace);
+        if (nsError) throw new Error(nsError);
+        if (!opts.appName || !opts.appName.trim()) throw new Error('App name is required.');
+
+        let webRoot, files;
+        if (opts.preExtracted) {
+            // Reuse the preview's extraction; clone bytes so minify/encrypt below don't
+            // mutate what's cached for the (still-visible) file-list checkboxes.
+            webRoot = opts.preExtracted.webRoot;
+            files = opts.preExtracted.files.map(function (f) {
+                return { relPath: f.relPath, bytes: f.bytes.slice() };
+            });
+        } else {
+            const extracted = await extractWebFiles(opts.zipData, deps);
+            webRoot = extracted.webRoot;
+            files = extracted.files;
+        }
+
         const ns = opts.namespace;
         const hasIcon = !!opts.iconIco;
-
         const out = new JSZip();
 
         const minify = opts.minify !== false;
         const password = (opts.encryptPassword || '').trim();
         let cryptoInfo = null;
 
+        // Minify/encrypt run on every file by extension, regardless of embed/external —
+        // that split only affects where the bytes end up, not whether they're processed.
         if (minify) {
             for (const f of files) {
                 const ext = extOf(f.relPath);
                 if (!['.js', '.mjs', '.css', '.html', '.htm'].includes(ext)) continue;
                 const text = new TextDecoder('utf-8').decode(f.bytes);
-                let out;
-                if (ext === '.js' || ext === '.mjs') out = await minifyJs(text, deps.Terser);
-                else if (ext === '.css') out = minifyCss(text);
-                else out = await minifyHtml(text, deps.Terser);
-                f.bytes = new TextEncoder().encode(out);
+                let outText;
+                if (ext === '.js' || ext === '.mjs') outText = await minifyJs(text, deps.Terser);
+                else if (ext === '.css') outText = minifyCss(text);
+                else outText = await minifyHtml(text, deps.Terser);
+                f.bytes = new TextEncoder().encode(outText);
             }
         }
 
@@ -713,12 +816,18 @@
             cryptoInfo = { saltHex: toHex(salt), password, iterations: PBKDF2_ITERATIONS };
         }
 
-        const textFiles = buildProjectFiles(opts, files, hasIcon, cryptoInfo);
+        // Anything the user unchecked in the preview ships as a normal file next to the
+        // exe (Content, CopyToOutputDirectory) instead of as an EmbeddedResource.
+        const externalSet = new Set((opts.externalPaths || []).map(function (p) { return p.replace(/\\/g, '/'); }));
+        const embeddedFiles = files.filter(function (f) { return !externalSet.has(f.relPath); });
+        const externalFiles = files.filter(function (f) { return externalSet.has(f.relPath); });
+
+        const textFiles = buildProjectFiles(opts, embeddedFiles, externalFiles, hasIcon, cryptoInfo);
         for (const path in textFiles) out.file(path, textFiles[path]);
 
-        for (const f of files) {
-            out.file(ns + '/Resources/Web/' + f.relPath, f.bytes);
-        }
+        for (const f of embeddedFiles) out.file(ns + '/Resources/Web/' + f.relPath, f.bytes);
+        for (const f of externalFiles) out.file(ns + '/Assets/' + f.relPath, f.bytes);
+
         if (hasIcon) {
             out.file(ns + '/Resources/icon.ico', opts.iconIco);
         }
@@ -739,6 +848,8 @@
         return {
             payload: payload,
             fileCount: files.length,
+            embeddedCount: embeddedFiles.length,
+            externalCount: externalFiles.length,
             webRoot: webRoot,
             entries: entries2
         };
@@ -746,6 +857,7 @@
 
     const api = {
         generateProject: generateProject,
+        extractWebFiles: extractWebFiles,
         validateNamespace: validateNamespace,
         findWebRoot: findWebRoot,
         buildIco: buildIco,
@@ -779,6 +891,51 @@ if (typeof document !== 'undefined') {
     var ICON_SIZES = [16, 32, 48, 256];
 
     var iconPngDataUrls = null; // { 16: 'data:image/png;base64,...', ... }
+
+    var extracted = null;          // { webRoot, files: [{relPath, bytes}] }
+    var embedState = new Map();    // relPath -> true (embed) / false (external)
+
+    var MEDIA_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.mp4', '.mp3',
+        '.wav', '.ogg', '.woff', '.woff2', '.ttf', '.glb', '.gltf', '.bin'];
+
+    function isMediaExt(relPath) {
+        var dot = relPath.lastIndexOf('.');
+        if (dot === -1) return false;
+        return MEDIA_EXTS.indexOf(relPath.slice(dot).toLowerCase()) !== -1;
+    }
+
+    function renderFileList() {
+        var wrap = el('fileListWrap');
+        var list = el('fileList');
+        list.innerHTML = '';
+        if (!extracted) { wrap.hidden = true; return; }
+        wrap.hidden = false;
+
+        extracted.files.forEach(function (f) {
+            var row = document.createElement('label');
+            row.className = 'file-row';
+
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = embedState.get(f.relPath) !== false;
+            cb.addEventListener('change', function () {
+                embedState.set(f.relPath, cb.checked);
+            });
+
+            var name = document.createElement('span');
+            name.className = 'file-row-name';
+            name.textContent = f.relPath;
+
+            var size = document.createElement('span');
+            size.className = 'file-row-size';
+            size.textContent = fmtBytes(f.bytes.length);
+
+            row.appendChild(cb);
+            row.appendChild(name);
+            row.appendChild(size);
+            list.appendChild(row);
+        });
+    }
 
     function processIcon(file) {
         return new Promise(function (resolve, reject) {
@@ -831,6 +988,19 @@ if (typeof document !== 'undefined') {
         });
     });
 
+    el('selectAllFiles').addEventListener('click', function () {
+        if (!extracted) return;
+        extracted.files.forEach(function (f) { embedState.set(f.relPath, true); });
+        renderFileList();
+    });
+    el('selectExternalMedia').addEventListener('click', function () {
+        if (!extracted) return;
+        extracted.files.forEach(function (f) {
+            if (isMediaExt(f.relPath)) embedState.set(f.relPath, false);
+        });
+        renderFileList();
+    });
+
     var selectedFile = null;
     var currentUrl = null;
 
@@ -867,6 +1037,10 @@ if (typeof document !== 'undefined') {
             return;
         }
         selectedFile = file;
+        extracted = null;
+        embedState = new Map();
+        renderFileList();
+
         el('dropIdle').hidden = true;
         el('dropLoaded').hidden = false;
         drop.classList.add('loaded');
@@ -876,6 +1050,20 @@ if (typeof document !== 'undefined') {
         if (!el('appName').value) el('appName').value = titleize(file.name);
         if (!el('namespace').value) el('namespace').value = pascalize(file.name);
         validate();
+
+        reader(file).then(function (buffer) {
+            return window.WindowsWrapper.extractWebFiles(buffer, { JSZip: window.JSZip });
+        }).then(function (result) {
+            extracted = result;
+            result.files.forEach(function (f) { embedState.set(f.relPath, true); });
+            renderFileList();
+            validate();
+        }).catch(function (err) {
+            logReset();
+            logLine(err && err.message ? err.message : 'Could not read that zip.', true);
+            extracted = null;
+            validate();
+        });
     }
 
     drop.addEventListener('click', function () { fileInput.click(); });
@@ -906,7 +1094,7 @@ if (typeof document !== 'undefined') {
         el('namespace').classList.toggle('invalid', !!(ns && nsErr));
         el('appNameError').textContent = '';
 
-        var ready = selectedFile && appName && ns && !nsErr;
+        var ready = selectedFile && extracted && appName && ns && !nsErr;
         goBtn.disabled = !ready;
         return ready;
     }
@@ -1004,21 +1192,24 @@ if (typeof document !== 'undefined') {
 
         if (currentUrl) { URL.revokeObjectURL(currentUrl); currentUrl = null; }
 
-        logLine('Reading ' + selectedFile.name);
+        logLine('Applying minify/encryption settings to ' + extracted.files.length + ' file(s)');
 
-        reader(selectedFile).then(function (buffer) {
-            logLine('Unpacking web app and locating index.html');
+        var iconIco = null;
+        if (iconPngDataUrls) {
+            var images = ICON_SIZES.map(function (size) {
+                return { size: size, png: dataUrlToUint8Array(iconPngDataUrls[size]) };
+            });
+            iconIco = window.WindowsWrapper.buildIco(images);
+        }
 
-            var iconIco = null;
-            if (iconPngDataUrls) {
-                var images = ICON_SIZES.map(function (size) {
-                    return { size: size, png: dataUrlToUint8Array(iconPngDataUrls[size]) };
-                });
-                iconIco = window.WindowsWrapper.buildIco(images);
-            }
+        var externalPaths = Array.from(embedState.entries())
+            .filter(function (entry) { return entry[1] === false; })
+            .map(function (entry) { return entry[0]; });
 
+        Promise.resolve().then(function () {
             return window.WindowsWrapper.generateProject({
-                zipData: buffer,
+                preExtracted: extracted,
+                externalPaths: externalPaths,
                 appName: appName,
                 namespace: namespaceValue,
                 targetFramework: el('targetFramework').value,
@@ -1031,9 +1222,10 @@ if (typeof document !== 'undefined') {
                 openExternalLinks: el('optExternalLinks').checked,
                 fullscreen: el('optFullscreen').checked,
                 closeOnEscape: el('optCloseOnEscape').checked,
+                confirmClose: el('optConfirmClose').checked,
+                lockdown: el('optLockdown').checked,
                 minify: el('optMinify').checked,
                 encryptPassword: el('encryptPassword').value,
-                lockdown: el('optLockdown').checked,
                 iconIco: iconIco,
                 outputType: 'blob'
             }, {
@@ -1041,9 +1233,9 @@ if (typeof document !== 'undefined') {
                 Terser: window.Terser
             });
         }).then(function (result) {
-            var rootLabel = result.webRoot ? result.webRoot : '(zip root)';
+            var rootLabel = extracted.webRoot ? extracted.webRoot : '(zip root)';
             logLine('Web root: ' + rootLabel);
-            logLine('Embedded ' + result.fileCount + ' file(s) into the exe, folder structure preserved');
+            logLine('Embedded ' + result.embeddedCount + ' file(s), ' + result.externalCount + ' shipped externally');
             logLine('Wrote solution, project, and MainWindow');
             logLine('Done. ' + result.entries.length + ' files in the project.');
 
