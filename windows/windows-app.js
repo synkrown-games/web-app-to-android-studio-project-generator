@@ -158,7 +158,7 @@
         ].join('\r\n');
     }
 
-    function csprojFile(ns, opts, webFiles, hasAssets, hasIcon) {
+    function csprojFile(ns, opts, files, hasIcon) {
         const tfm = TARGET_FRAMEWORKS.has(opts.targetFramework) ? opts.targetFramework : 'net8.0-windows';
         const version = (opts.appVersion && opts.appVersion.trim()) ? opts.appVersion.trim() : '1.0.0';
 
@@ -194,23 +194,13 @@
         add('');
         add('  <ItemGroup>');
         add('    <None Remove="Resources\\Web\\**\\*" />');
-        for (const f of webFiles) {
+        for (const f of files) {
             const includePath = 'Resources\\Web\\' + f.relPath.split('/').join('\\');
             add('    <EmbeddedResource Include="' + xmlEscape(includePath) + '">');
             add('      <LogicalName>' + xmlEscape('web/' + f.relPath) + '</LogicalName>');
             add('    </EmbeddedResource>');
         }
         add('  </ItemGroup>');
-
-        if (hasAssets) {
-            add('');
-            add('  <ItemGroup>');
-            add('    <None Remove="AppAssets\\**\\*" />');
-            add('    <Content Include="AppAssets\\**\\*">');
-            add('      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>');
-            add('    </Content>');
-            add('  </ItemGroup>');
-        }
 
         add('');
         add('</Project>');
@@ -284,7 +274,6 @@
         add('    {');
         add('        private const string HostName = "app.local";');
         add('        private const string StartUrl = "https://app.local/index.html";');
-        add('        private string assetsFolder = string.Empty;');
         add('');
         add('        public MainWindow()');
         add('        {');
@@ -320,13 +309,8 @@
         add('            core.Settings.AreDefaultContextMenusEnabled = ' + (devTools ? 'true' : 'false') + ';');
         add('            core.Settings.IsStatusBarEnabled = false;');
         add('');
-        add('            assetsFolder = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "AppAssets"));');
-        add('            Directory.CreateDirectory(assetsFolder);');
-        add('');
-        add('            // Note: SetVirtualHostNameToFolderMapping is intentionally not used here —');
-        add('            // WebView2 does not raise WebResourceRequested for a host that also has a folder');
-        add('            // mapping, so index.html/.js/.css (served from embedded resources below) would');
-        add('            // never be reached. Loose files are read straight off disk in the handler instead.');
+        add('            // Every file from the zip (not just index.html/.js/.css) is embedded as a resource,');
+        add('            // so nothing is read off disk at runtime — see OnWebResourceRequested below.');
         add('            core.AddWebResourceRequestedFilter(');
         add('                $"https://{HostName}/*", CoreWebView2WebResourceContext.All);');
         add('            core.WebResourceRequested += OnWebResourceRequested;');
@@ -349,8 +333,8 @@
         add('            core.Navigate(StartUrl);');
         add('        }');
         add('');
-        add('        // Serves index.html/.js/.css from the resources embedded in this exe. Anything else');
-        add('        // is read from the AppAssets folder that sits next to the exe on disk.');
+        add('        // Serves every embedded file by its original relative path, e.g. "tools/index.html"');
+        add('        // or "tools/app.js" map straight back to how they sat in the source zip.');
         add('        private void OnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)');
         add('        {');
         add('            Uri uri;');
@@ -363,15 +347,9 @@
         add('            Stream? content = Assembly.GetExecutingAssembly().GetManifestResourceStream("web/" + path);');
         add('            if (content == null)');
         add('            {');
-        add('                string diskPath = Path.GetFullPath(Path.Combine(assetsFolder, path.Replace(\'/\', Path.DirectorySeparatorChar)));');
-        add('                bool withinAssets = diskPath.StartsWith(assetsFolder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);');
-        add('                if (!withinAssets || !File.Exists(diskPath))');
-        add('                {');
-        add('                    e.Response = WebView.CoreWebView2.Environment.CreateWebResourceResponse(');
-        add('                        null, 404, "Not Found", "");');
-        add('                    return;');
-        add('                }');
-        add('                content = File.OpenRead(diskPath);');
+        add('                e.Response = WebView.CoreWebView2.Environment.CreateWebResourceResponse(');
+        add('                    null, 404, "Not Found", "");');
+        add('                return;');
         add('            }');
         add('');
         add('            string headers = "Content-Type: " + ContentTypeFor(path) + "\\r\\nCache-Control: no-cache";');
@@ -413,6 +391,39 @@
         add('                    return "text/javascript; charset=utf-8";');
         add('                case ".css":');
         add('                    return "text/css; charset=utf-8";');
+        add('                case ".json":');
+        add('                    return "application/json; charset=utf-8";');
+        add('                case ".svg":');
+        add('                    return "image/svg+xml";');
+        add('                case ".png":');
+        add('                    return "image/png";');
+        add('                case ".jpg":');
+        add('                case ".jpeg":');
+        add('                    return "image/jpeg";');
+        add('                case ".gif":');
+        add('                    return "image/gif";');
+        add('                case ".webp":');
+        add('                    return "image/webp";');
+        add('                case ".ico":');
+        add('                    return "image/x-icon";');
+        add('                case ".woff":');
+        add('                    return "font/woff";');
+        add('                case ".woff2":');
+        add('                    return "font/woff2";');
+        add('                case ".ttf":');
+        add('                    return "font/ttf";');
+        add('                case ".wasm":');
+        add('                    return "application/wasm";');
+        add('                case ".txt":');
+        add('                    return "text/plain; charset=utf-8";');
+        add('                case ".xml":');
+        add('                    return "application/xml; charset=utf-8";');
+        add('                case ".mp4":');
+        add('                    return "video/mp4";');
+        add('                case ".mp3":');
+        add('                    return "audio/mpeg";');
+        add('                case ".wav":');
+        add('                    return "audio/wav";');
         add('                default:');
         add('                    return "application/octet-stream";');
         add('            }');
@@ -427,18 +438,13 @@
     }
 
     function readmeFile(ns, opts) {
-        const assetNote = opts.hasAssets
-            ? 'This project also ships loose files in `AppAssets/` (models, textures, data, etc.). ' +
-            'They are copied next to the exe on every build — when you distribute the app, ' +
-            'zip up the whole output folder, not just the exe.'
-            : 'This project has no additional loose assets — everything the app needs is embedded in the exe.';
-
         return [
             '# ' + opts.appName,
             '',
             'A Visual Studio C# (WPF) project generated by the Web App to Windows .exe Project tool.',
-            'It wraps a web app in a native window using WebView2 and serves ' +
-            '`index.html`, JavaScript, and CSS straight from resources embedded in the exe.',
+            'It wraps a web app in a native window using WebView2. Every file from the uploaded zip ' +
+            '(HTML, JS, CSS, images, data — everything) is compiled into the exe as an embedded resource, ' +
+            'preserving the original folder structure. There are no loose files next to the exe.',
             '',
             '## Build',
             '',
@@ -448,33 +454,36 @@
             '(https://developer.microsoft.com/microsoft-edge/webview2/) must be present on the machine ' +
             'that runs the exe — it already ships with Windows 11 and most Windows 10 installs.',
             '',
-            assetNote,
-            '',
             '## Notes',
             '',
-            '- The app window navigates to `https://app.local/index.html`. That hostname is virtual: ' +
-            '`index.html`/`.js`/`.css` are served from embedded resources, everything else from `AppAssets/`.',
-            '- Relative paths and `fetch()` calls in the web app work the same way they did in the browser, ' +
-            'since both embedded and loose files are served from the same virtual origin.',
-            '- Downloads and `<input type="file">` pickers use WebView2\'s native dialogs — no extra glue needed.',
+            '- The app window navigates to `https://app.local/index.html`. That\'s a virtual host: every file ' +
+            'is served straight out of the exe\'s embedded resources, matched by its original relative path ' +
+            '(e.g. `tools/index.html` and `tools/app.js` stay under `tools/`).',
+            '- Relative paths and `fetch()` calls work the same as they did in the browser, since the whole ' +
+            'folder structure is preserved in the embedded resource names.',
+            '- Distribution is just the one exe (plus normal .NET/WebView2 dependencies) — nothing else needs ' +
+            'to travel with it.',
+            '- Embedding keeps your files out of plain sight in the output folder, but it is not real DRM: ' +
+            'someone with a .NET decompiler (ILSpy, dotPeek) can still extract the embedded files. Genuine source ' +
+            'protection needs JS obfuscation/minification as a separate step.',
             ''
         ].join('\n');
     }
 
-    function buildProjectFiles(opts, webFiles, hasAssets, hasIcon) {
+    function buildProjectFiles(opts, files, hasIcon) {
         const ns = opts.namespace;
-        const files = {};
+        const out = {};
         const projectGuid = guid();
 
-        files[ns + '.sln'] = slnFile(ns, projectGuid);
-        files[ns + '/' + ns + '.csproj'] = csprojFile(ns, opts, webFiles, hasAssets, hasIcon);
-        files[ns + '/App.xaml'] = appXaml(ns);
-        files[ns + '/App.xaml.cs'] = appXamlCs(ns);
-        files[ns + '/MainWindow.xaml'] = mainWindowXaml(ns, opts, hasIcon);
-        files[ns + '/MainWindow.xaml.cs'] = mainWindowXamlCs(ns, opts);
-        files[ns + '/.gitignore'] = gitignoreFile();
-        files[ns + '/README.md'] = readmeFile(ns, Object.assign({ hasAssets: hasAssets }, opts));
-        return files;
+        out[ns + '.sln'] = slnFile(ns, projectGuid);
+        out[ns + '/' + ns + '.csproj'] = csprojFile(ns, opts, files, hasIcon);
+        out[ns + '/App.xaml'] = appXaml(ns);
+        out[ns + '/App.xaml.cs'] = appXamlCs(ns);
+        out[ns + '/MainWindow.xaml'] = mainWindowXaml(ns, opts, hasIcon);
+        out[ns + '/MainWindow.xaml.cs'] = mainWindowXamlCs(ns, opts);
+        out[ns + '/.gitignore'] = gitignoreFile();
+        out[ns + '/README.md'] = readmeFile(ns, opts);
+        return out;
     }
 
     // Main entry. deps: { JSZip }
@@ -497,34 +506,25 @@
             throw new Error('No index.html found in the zip. The web app needs an index.html entry point.');
         }
 
-        const webFiles = [];
-        const assetFiles = [];
+        const files = [];
         for (const relPath of entries) {
             if (webRoot && relPath.indexOf(webRoot) !== 0) continue;
             const inner = webRoot ? relPath.slice(webRoot.length) : relPath;
             if (!inner) continue;
             const bytes = await source.file(relPath).async('uint8array');
-            if (WEB_EXTENSIONS.has(extOf(inner))) {
-                webFiles.push({ relPath: inner, bytes: bytes });
-            } else {
-                assetFiles.push({ relPath: inner, bytes: bytes });
-            }
+            files.push({ relPath: inner, bytes: bytes });
         }
-        if (webFiles.length === 0) throw new Error('No HTML, JS, or CSS files were found to embed.');
+        if (files.length === 0) throw new Error('No files were found to embed.');
 
         const ns = opts.namespace;
-        const hasAssets = assetFiles.length > 0;
         const hasIcon = !!opts.iconIco;
 
         const out = new JSZip();
-        const textFiles = buildProjectFiles(opts, webFiles, hasAssets, hasIcon);
+        const textFiles = buildProjectFiles(opts, files, hasIcon);
         for (const path in textFiles) out.file(path, textFiles[path]);
 
-        for (const f of webFiles) {
+        for (const f of files) {
             out.file(ns + '/Resources/Web/' + f.relPath, f.bytes);
-        }
-        for (const f of assetFiles) {
-            out.file(ns + '/AppAssets/' + f.relPath, f.bytes);
         }
         if (hasIcon) {
             out.file(ns + '/Resources/icon.ico', opts.iconIco);
@@ -545,8 +545,7 @@
 
         return {
             payload: payload,
-            webFileCount: webFiles.length,
-            assetFileCount: assetFiles.length,
+            fileCount: files.length,
             webRoot: webRoot,
             entries: entries2
         };
@@ -767,7 +766,7 @@ if (typeof document !== 'undefined') {
                 var entry = node[key];
                 var isDir = Object.keys(entry.__children).length > 0;
                 var indent = '  '.repeat(depth);
-                var asset = prefixAsset || key === 'AppAssets' || key === 'Web';
+                var asset = prefixAsset || key === 'Web';
                 var cls = isDir ? 'dir' : (asset ? 'leaf asset' : 'leaf');
                 rows.push({ text: indent + (isDir ? key + '/' : key), cls: cls });
                 if (isDir) walk(entry.__children, depth + 1, asset);
@@ -847,8 +846,7 @@ if (typeof document !== 'undefined') {
         }).then(function (result) {
             var rootLabel = result.webRoot ? result.webRoot : '(zip root)';
             logLine('Web root: ' + rootLabel);
-            logLine('Embedded ' + result.webFileCount + ' HTML/JS/CSS file(s) into the exe');
-            logLine('Copied ' + result.assetFileCount + ' other file(s) into AppAssets');
+            logLine('Embedded ' + result.fileCount + ' file(s) into the exe, folder structure preserved');
             logLine('Wrote solution, project, and MainWindow');
             logLine('Done. ' + result.entries.length + ' files in the project.');
 
