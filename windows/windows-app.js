@@ -22,11 +22,123 @@
 
     const JUNK = ['__MACOSX/', '/.DS_Store', '.DS_Store', 'Thumbs.db', '/desktop.ini'];
 
+    // Directory/file names that are dev tooling or editor metadata, not part of the
+    // actual web app — safe to drop without affecting whether the app runs.
+    const JUNK_NAMES = new Set([
+        '.git', '.gitignore', '.gitattributes', '.gitmodules',
+        '.claude', '.vscode', '.idea',
+        '.DS_Store', 'Thumbs.db', 'desktop.ini',
+        '__pycache__', '.pytest_cache', '.mypy_cache',
+        'node_modules',
+        '.env', '.env.local', '.env.development', '.env.production',
+        '.npmrc', '.editorconfig'
+    ]);
+
+    function isJunk(path) {
+        if (path.endsWith('/')) return true;
+        if (JUNK.some(function (marker) {
+            return path === marker || path.indexOf(marker) !== -1;
+        })) return true;
+
+        // Match on path segments, so ".claude/settings.json", "src/.git/HEAD", and
+        // "vendor/node_modules/foo.js" are all excluded regardless of depth — but a
+        // legitimately-named file like "gitignore-notes.txt" is left alone, since it's
+        // not an exact segment match.
+        const parts = path.split('/');
+        return parts.some(function (part) { return JUNK_NAMES.has(part); });
+    }
+
     // Files with these extensions get compiled into the exe as embedded resources.
     // Everything else accompanies the exe as a normal file on disk.
     const WEB_EXTENSIONS = new Set(['.html', '.htm', '.js', '.mjs', '.css']);
 
     const TARGET_FRAMEWORKS = new Set(['net8.0-windows', 'net9.0-windows', 'net10.0-windows']);
+    const ENCRYPT_EXTENSIONS = new Set(['.js', '.mjs', '.html', '.htm']);
+    const PBKDF2_ITERATIONS = 100000;
+
+    function stripCssComments(css) {
+        return css.replace(/\/\*[\s\S]*?\*\//g, '');
+    }
+
+    // Conservative on purpose: only comments + whitespace runs are touched. We do NOT
+    // collapse whitespace touching {};:, because that whitespace can sit inside a quoted
+    // attribute-selector value (e.g. [title="a, b"]) and touching it there silently
+    // changes the value instead of just shrinking the file.
+    function minifyCss(css) {
+        return stripCssComments(css).replace(/[ \t\r\n\f]+/g, ' ').trim();
+    }
+
+    async function minifyJs(code, terser) {
+        const result = await terser.minify(code, {
+            compress: true,
+            mangle: true,
+            format: { comments: false }
+        });
+        if (result.error) throw new Error('JS minify failed: ' + result.error.message);
+        return result.code;
+    }
+
+    // Extracts <pre>/<textarea>/<script>/<style> blocks so the generic whitespace
+    // collapse can't touch them, minifies inline <script>/<style> content separately,
+    // strips comments (keeping IE conditional comments), then reassembles.
+    async function minifyHtml(html, terser) {
+        const blocks = [];
+        function stash(match) {
+            const token = '\u0000BLOCK' + blocks.length + '\u0000';
+            blocks.push(match);
+            return token;
+        }
+
+        let work = html.replace(/<(pre|textarea)[\s\S]*?<\/\1>/gi, stash);
+        work = work.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, stash);
+        work = work.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, stash);
+
+        work = work.replace(/<!--(?!\[if)[\s\S]*?-->/g, '');
+        work = work.replace(/>\s+</g, '><');
+        work = work.replace(/[ \t\r\n\f]+/g, ' ').trim();
+
+        for (let i = 0; i < blocks.length; i++) {
+            const token = '\u0000BLOCK' + i + '\u0000';
+            let block = blocks[i];
+            const scriptMatch = block.match(/^(<script\b[^>]*>)([\s\S]*?)(<\/script>)$/i);
+            const styleMatch = block.match(/^(<style\b[^>]*>)([\s\S]*?)(<\/style>)$/i);
+
+            if (scriptMatch && !/\bsrc\s*=/i.test(scriptMatch[1]) && scriptMatch[2].trim()) {
+                try {
+                    const r = await terser.minify(scriptMatch[2], { compress: true, mangle: true, format: { comments: false } });
+                    if (!r.error && r.code) block = scriptMatch[1] + r.code + scriptMatch[3];
+                } catch (e) { /* leave inline script as-is if it fails to minify */ }
+            } else if (styleMatch) {
+                block = styleMatch[1] + minifyCss(styleMatch[2]) + styleMatch[3];
+            }
+            work = work.split(token).join(block);
+        }
+        return work;
+    }
+
+    function toHex(bytes) {
+        return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    async function deriveAesKey(password, saltBytes, iterations) {
+        const enc = new TextEncoder();
+        const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+        return crypto.subtle.deriveKey(
+            { name: 'PBKDF2', salt: saltBytes, iterations, hash: 'SHA-256' },
+            baseKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt']
+        );
+    }
+
+    // Output layout: [12-byte IV][ciphertext][16-byte GCM tag] — WebCrypto appends the
+    // tag automatically, and this exact layout is what the C# side splits back apart.
+    async function encryptBytes(key, plainBytes) {
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plainBytes);
+        const out = new Uint8Array(12 + ciphertext.byteLength);
+        out.set(iv, 0);
+        out.set(new Uint8Array(ciphertext), 12);
+        return out;
+    }
 
     function validateNamespace(ns) {
         if (!ns) return 'Namespace is required.';
@@ -49,13 +161,6 @@
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&apos;');
-    }
-
-    function isJunk(path) {
-        if (path.endsWith('/')) return true;
-        return JUNK.some(function (marker) {
-            return path === marker || path.indexOf(marker) !== -1;
-        });
     }
 
     // Picks the shallowest index.html and returns its directory as the web root.
@@ -252,11 +357,12 @@
             '</Window>\n';
     }
 
-    function mainWindowXamlCs(ns, opts) {
+    function mainWindowXamlCs(ns, opts, cryptoInfo) {
         const devTools = opts.devTools !== false;
         const openExternalLinks = opts.openExternalLinks !== false;
         const fullscreen = !!opts.fullscreen;
         const closeOnEscape = !!opts.closeOnEscape;
+        const lockdown = !!opts.lockdown;
 
         const lines = [];
         function add(s) { lines.push(s); }
@@ -265,6 +371,7 @@
         add('using System.IO;');
         add('using System.Reflection;');
         add('using System.Windows;');
+        if (cryptoInfo) add('using System.Security.Cryptography;');
         add('using Microsoft.Web.WebView2.Core;');
         add('using Microsoft.Web.WebView2.Wpf;');
         add('');
@@ -274,6 +381,18 @@
         add('    {');
         add('        private const string HostName = "app.local";');
         add('        private const string StartUrl = "https://app.local/index.html";');
+
+        if (cryptoInfo) {
+            add('');
+            add('        // Build-time embedding key. This deters casual poking around in the output');
+            add('        // folder, but is NOT real DRM -- a .NET decompiler (ILSpy, dotPeek) can still');
+            add('        // pull these constants back out.');
+            add('        private const string EncSaltHex = "' + cryptoInfo.saltHex + '";');
+            add('        private const string EncPassword = ' + JSON.stringify(cryptoInfo.password) + ';');
+            add('        private const int EncIterations = ' + cryptoInfo.iterations + ';');
+            add('        private static readonly byte[] EncKey = DeriveKey();');
+        }
+
         add('');
         add('        public MainWindow()');
         add('        {');
@@ -281,10 +400,7 @@
         if (fullscreen) {
             add('');
             add('            // WindowStyle.None + WindowState.Maximized together cover the entire monitor,');
-            add('            // including the area behind the taskbar. Setting Width/Height/Left/Top manually');
-            add('            // instead does not work here: WindowStartupLocation defaults to CenterScreen,');
-            add('            // which silently overrides explicit Left/Top unless it is set to Manual, and the');
-            add('            // window ends up centered a few pixels short of the screen edge.');
+            add('            // including the area behind the taskbar.');
             add('            WindowStyle = WindowStyle.None;');
             add('            ResizeMode = ResizeMode.NoResize;');
             add('            WindowState = WindowState.Maximized;');
@@ -305,22 +421,32 @@
         add('            await WebView.EnsureCoreWebView2Async(environment);');
         add('');
         add('            CoreWebView2 core = WebView.CoreWebView2;');
-        add('            core.Settings.AreDevToolsEnabled = ' + (devTools ? 'true' : 'false') + ';');
-        add('            core.Settings.AreDefaultContextMenusEnabled = ' + (devTools ? 'true' : 'false') + ';');
+        add('            core.Settings.AreDevToolsEnabled = ' + (devTools && !lockdown ? 'true' : 'false') + ';');
+        add('            core.Settings.AreDefaultContextMenusEnabled = ' + (devTools && !lockdown ? 'true' : 'false') + ';');
         add('            core.Settings.IsStatusBarEnabled = false;');
+
+        if (lockdown) {
+            add('');
+            add('            // Kiosk/lockdown mode: removes the ways a player could break out of the game');
+            add('            // or peek at source -- right-click menu, F12/devtools, F5/Ctrl+R refresh,');
+            add('            // Ctrl+F find, Ctrl+P print, view-source, pinch/ctrl-scroll zoom, back/forward');
+            add('            // swipe navigation, and the built-in network-error page.');
+            add('            core.Settings.AreBrowserAcceleratorKeysEnabled = false;');
+            add('            core.Settings.IsZoomControlEnabled = false;');
+            add('            core.Settings.IsPinchZoomEnabled = false;');
+            add('            core.Settings.IsSwipeNavigationEnabled = false;');
+            add('            core.Settings.IsBuiltInErrorPageEnabled = false;');
+        }
+
         add('');
         add('            // Every file from the zip (not just index.html/.js/.css) is embedded as a resource,');
-        add('            // so nothing is read off disk at runtime — see OnWebResourceRequested below.');
+        add('            // so nothing is read off disk at runtime -- see OnWebResourceRequested below.');
         add('            core.AddWebResourceRequestedFilter(');
         add('                $"https://{HostName}/*", CoreWebView2WebResourceContext.All);');
         add('            core.WebResourceRequested += OnWebResourceRequested;');
-        if (openExternalLinks) {
-            add('            core.NavigationStarting += OnNavigationStarting;');
-        }
+        if (openExternalLinks) add('            core.NavigationStarting += OnNavigationStarting;');
         if (closeOnEscape) {
             add('');
-            add('            // The page itself owns the keyboard once it has focus, so Escape is caught in');
-            add('            // JS and relayed back over postMessage rather than as a native accelerator key.');
             add('            await core.AddScriptToExecuteOnDocumentCreatedAsync(');
             add('                "window.addEventListener(\'keydown\', function (e) { " +');
             add('                "if (e.key === \'Escape\') { window.chrome.webview.postMessage(\'close-app\'); } });");');
@@ -333,8 +459,8 @@
         add('            core.Navigate(StartUrl);');
         add('        }');
         add('');
-        add('        // Serves every embedded file by its original relative path, e.g. "tools/index.html"');
-        add('        // or "tools/app.js" map straight back to how they sat in the source zip.');
+        add('        // Serves every embedded file by its original relative path, decrypting on the fly');
+        add('        // for files that were encrypted at build time.');
         add('        private void OnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)');
         add('        {');
         add('            Uri uri;');
@@ -344,13 +470,30 @@
         add('            string path = Uri.UnescapeDataString(uri.AbsolutePath.TrimStart(\'/\'));');
         add('            if (path.Length == 0) path = "index.html";');
         add('');
-        add('            Stream? content = Assembly.GetExecutingAssembly().GetManifestResourceStream("web/" + path);');
-        add('            if (content == null)');
+        add('            Stream? resourceStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("web/" + path);');
+        add('            if (resourceStream == null)');
         add('            {');
         add('                e.Response = WebView.CoreWebView2.Environment.CreateWebResourceResponse(');
         add('                    null, 404, "Not Found", "");');
         add('                return;');
         add('            }');
+        add('');
+
+        if (cryptoInfo) {
+            add('            byte[] raw;');
+            add('            using (var ms = new MemoryStream())');
+            add('            {');
+            add('                resourceStream.CopyTo(ms);');
+            add('                raw = ms.ToArray();');
+            add('            }');
+            add('');
+            add('            string ext = Path.GetExtension(path).ToLowerInvariant();');
+            add('            byte[] payload = (ext is ".js" or ".mjs" or ".html" or ".htm") ? Decrypt(raw) : raw;');
+            add('            Stream content = new MemoryStream(payload);');
+        } else {
+            add('            Stream content = resourceStream;');
+        }
+
         add('');
         add('            string headers = "Content-Type: " + ContentTypeFor(path) + "\\r\\nCache-Control: no-cache";');
         add('            e.Response = WebView.CoreWebView2.Environment.CreateWebResourceResponse(');
@@ -359,8 +502,6 @@
 
         if (openExternalLinks) {
             add('');
-            add('        // Keeps the app itself inside this window, but sends http(s) links that point');
-            add('        // away from the bundled app out to the user\'s default browser.');
             add('        private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)');
             add('        {');
             add('            Uri uri;');
@@ -373,6 +514,30 @@
             add('            {');
             add('                UseShellExecute = true');
             add('            });');
+            add('        }');
+        }
+
+        if (cryptoInfo) {
+            add('');
+            add('        private static byte[] DeriveKey()');
+            add('        {');
+            add('            byte[] salt = Convert.FromHexString(EncSaltHex);');
+            add('            using var pbkdf2 = new Rfc2898DeriveBytes(EncPassword, salt, EncIterations, HashAlgorithmName.SHA256);');
+            add('            return pbkdf2.GetBytes(32);');
+            add('        }');
+            add('');
+            add('        // Ciphertext layout matches the browser-side WebCrypto AES-GCM output:');
+            add('        // [12-byte IV][ciphertext][16-byte auth tag].');
+            add('        private static byte[] Decrypt(byte[] blob)');
+            add('        {');
+            add('            const int ivLen = 12, tagLen = 16;');
+            add('            byte[] iv = blob[0..ivLen];');
+            add('            byte[] tag = blob[^tagLen..];');
+            add('            byte[] cipherText = blob[ivLen..^tagLen];');
+            add('            byte[] plain = new byte[cipherText.Length];');
+            add('            using var aesGcm = new AesGcm(EncKey, tagLen);');
+            add('            aesGcm.Decrypt(iv, cipherText, tag, plain);');
+            add('            return plain;');
             add('        }');
         }
 
@@ -470,7 +635,7 @@
         ].join('\n');
     }
 
-    function buildProjectFiles(opts, files, hasIcon) {
+    function buildProjectFiles(opts, files, hasIcon, cryptoInfo) {
         const ns = opts.namespace;
         const out = {};
         const projectGuid = guid();
@@ -480,7 +645,7 @@
         out[ns + '/App.xaml'] = appXaml(ns);
         out[ns + '/App.xaml.cs'] = appXamlCs(ns);
         out[ns + '/MainWindow.xaml'] = mainWindowXaml(ns, opts, hasIcon);
-        out[ns + '/MainWindow.xaml.cs'] = mainWindowXamlCs(ns, opts);
+        out[ns + '/MainWindow.xaml.cs'] = mainWindowXamlCs(ns, opts, cryptoInfo);
         out[ns + '/.gitignore'] = gitignoreFile();
         out[ns + '/README.md'] = readmeFile(ns, opts);
         return out;
@@ -520,7 +685,35 @@
         const hasIcon = !!opts.iconIco;
 
         const out = new JSZip();
-        const textFiles = buildProjectFiles(opts, files, hasIcon);
+
+        const minify = opts.minify !== false;
+        const password = (opts.encryptPassword || '').trim();
+        let cryptoInfo = null;
+
+        if (minify) {
+            for (const f of files) {
+                const ext = extOf(f.relPath);
+                if (!['.js', '.mjs', '.css', '.html', '.htm'].includes(ext)) continue;
+                const text = new TextDecoder('utf-8').decode(f.bytes);
+                let out;
+                if (ext === '.js' || ext === '.mjs') out = await minifyJs(text, deps.Terser);
+                else if (ext === '.css') out = minifyCss(text);
+                else out = await minifyHtml(text, deps.Terser);
+                f.bytes = new TextEncoder().encode(out);
+            }
+        }
+
+        if (password) {
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const key = await deriveAesKey(password, salt, PBKDF2_ITERATIONS);
+            for (const f of files) {
+                if (!ENCRYPT_EXTENSIONS.has(extOf(f.relPath))) continue;
+                f.bytes = await encryptBytes(key, f.bytes);
+            }
+            cryptoInfo = { saltHex: toHex(salt), password, iterations: PBKDF2_ITERATIONS };
+        }
+
+        const textFiles = buildProjectFiles(opts, files, hasIcon, cryptoInfo);
         for (const path in textFiles) out.file(path, textFiles[path]);
 
         for (const f of files) {
@@ -838,10 +1031,14 @@ if (typeof document !== 'undefined') {
                 openExternalLinks: el('optExternalLinks').checked,
                 fullscreen: el('optFullscreen').checked,
                 closeOnEscape: el('optCloseOnEscape').checked,
+                minify: el('optMinify').checked,
+                encryptPassword: el('encryptPassword').value,
+                lockdown: el('optLockdown').checked,
                 iconIco: iconIco,
                 outputType: 'blob'
             }, {
-                JSZip: window.JSZip
+                JSZip: window.JSZip,
+                Terser: window.Terser
             });
         }).then(function (result) {
             var rootLabel = result.webRoot ? result.webRoot : '(zip root)';

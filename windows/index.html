@@ -119,6 +119,13 @@
                                     the page at runtime. Turn off for a release build.</span></span>
                         </label>
                         <label class="check">
+                            <input type="checkbox" id="optLockdown">
+                            <span><span class="ct">Lock down the browser (recommended for games)</span>
+                            <span class="cd">Disables right-click, F12/DevTools, F5/Ctrl+R refresh, Ctrl+F find,
+                            Ctrl+P print, zoom shortcuts, and swipe navigation. Overrides the DevTools option
+                            above.</span></span>
+                        </label>
+                        <label class="check">
                             <input type="checkbox" id="optExternalLinks" checked>
                             <span><span class="ct">Open external links in the default browser</span> <span
                                     class="cd">Keeps the app window on your bundled pages; http(s) links to other
@@ -149,8 +156,7 @@
                         <label for="encryptPassword">Encryption password <span class="hint">optional</span></label>
                         <input type="password" id="encryptPassword" autocomplete="off" placeholder="Leave blank to skip">
                         <div class="field-error" id="encryptPasswordHint" style="opacity:.7">
-                            Encrypts your .js/.html before embedding; the exe decrypts them in memory at runtime.
-                            Raises the bar against casual snooping.
+                            Encrypts your .js/.html before embedding;
                         </div>
                     </div>
 
