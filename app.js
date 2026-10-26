@@ -159,6 +159,7 @@
         const admob = opts.admob || null;
         const media = !!opts.needsMediaPermissions;
         const fullscreen = !!opts.fullscreen;
+        const localNetwork = !!opts.localNetwork;
 
         const lines = [];
         function add(s) { lines.push(s); }
@@ -169,12 +170,16 @@
         add('import android.app.Activity;');
         add('import android.content.Intent;');
         add('import android.net.Uri;');
+        if (localNetwork) {
+            add('import android.os.Build;');
+        }
         add('import android.os.Bundle;');
         add('import android.util.Base64;');
         add('import android.view.ViewGroup;');
         add('import android.view.ViewParent;');
         add('import android.webkit.DownloadListener;');
         add('import android.webkit.JavascriptInterface;');
+        add('import android.webkit.RenderProcessGoneDetail;');
         add('import android.webkit.URLUtil;');
         add('import android.webkit.ValueCallback;');
         add('import android.webkit.WebChromeClient;');
@@ -202,12 +207,32 @@
         if (media) {
             add('');
             add('import android.Manifest;');
-            add('import android.content.pm.PackageManager;');
             add('import android.webkit.PermissionRequest;');
-            add('import androidx.core.content.ContextCompat;');
             add('');
             add('import java.util.ArrayList;');
             add('import java.util.List;');
+        }
+
+        if (media || localNetwork) {
+            add('');
+            add('import android.content.pm.PackageManager;');
+        }
+
+        if (media || localNetwork || !fullscreen) {
+            add('');
+            add('import androidx.core.content.ContextCompat;');
+        }
+
+        if (!fullscreen) {
+            add('');
+            add('import android.graphics.Color;');
+            add('import android.widget.FrameLayout;');
+            add('');
+            add('import androidx.activity.EdgeToEdge;');
+            add('import androidx.activity.SystemBarStyle;');
+            add('import androidx.core.graphics.Insets;');
+            add('import androidx.core.view.ViewCompat;');
+            add('import androidx.core.view.WindowInsetsCompat;');
         }
 
         if (fullscreen) {
@@ -241,8 +266,13 @@
         if (admob) {
             add('    private static final String BANNER_AD_UNIT_ID = "' + admob.bannerUnitId + '";');
         }
+        if (localNetwork) {
+            add('    private static final String LOCAL_NETWORK_PERMISSION = "android.permission.ACCESS_LOCAL_NETWORK";');
+            add('    private static final int LOCAL_NETWORK_MIN_SDK = 37;');
+        }
         add('');
         add('    private WebView webView;');
+        add('    private OnBackPressedCallback backCallback;');
         add('    private final ExecutorService executor = Executors.newSingleThreadExecutor();');
         add('');
         add('    private ValueCallback<Uri[]> fileChooserCallback;');
@@ -306,11 +336,29 @@
             add('                    });');
         }
 
+        if (localNetwork) {
+            add('');
+            add('    private final ActivityResultLauncher<String> localNetworkPermissionLauncher =');
+            add('            registerForActivityResult(new ActivityResultContracts.RequestPermission(),');
+            add('                    granted -> {');
+            add('                        if (!granted) {');
+            add('                            toast("Local network access was denied");');
+            add('                        }');
+            add('                    });');
+        }
+
         add('');
         add('    @SuppressLint("SetJavaScriptEnabled")');
         add('    @Override');
         add('    protected void onCreate(Bundle savedInstanceState) {');
         add('        super.onCreate(savedInstanceState);');
+
+        if (!fullscreen) {
+            add('');
+            add('        EdgeToEdge.enable(this,');
+            add('                SystemBarStyle.dark(Color.TRANSPARENT),');
+            add('                SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT));');
+        }
 
         if (fullscreen) {
             add('');
@@ -338,10 +386,36 @@
             add('                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);');
             add('        adParams.gravity = Gravity.CENTER_HORIZONTAL;');
             add('        root.addView(adView, adParams);');
+        }
+
+        if (fullscreen) {
             add('');
-            add('        setContentView(root);');
+            add('        setContentView(' + (admob ? 'root' : 'webView') + ');');
         } else {
-            add('        setContentView(webView);');
+            const body = admob ? 'root' : 'body';
+            add('');
+            if (!admob) {
+                add('        FrameLayout body = new FrameLayout(this);');
+                add('        body.addView(webView, new FrameLayout.LayoutParams(');
+                add('                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));');
+            }
+            add('        ' + body + '.setBackgroundColor(Color.WHITE);');
+            add('');
+            add('        FrameLayout frame = new FrameLayout(this);');
+            add('        frame.setBackgroundColor(ContextCompat.getColor(this, R.color.status_bar));');
+            add('        frame.addView(' + body + ', new FrameLayout.LayoutParams(');
+            add('                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));');
+            add('');
+            add('        ViewCompat.setOnApplyWindowInsetsListener(frame, (view, windowInsets) -> {');
+            add('            Insets bars = windowInsets.getInsets(');
+            add('                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());');
+            add('            Insets keyboard = windowInsets.getInsets(WindowInsetsCompat.Type.ime());');
+            add('            view.setPadding(0, bars.top, 0, 0);');
+            add('            ' + body + '.setPadding(bars.left, 0, bars.right, Math.max(bars.bottom, keyboard.bottom));');
+            add('            return WindowInsetsCompat.CONSUMED;');
+            add('        });');
+            add('');
+            add('        setContentView(frame);');
         }
 
         add('');
@@ -368,6 +442,22 @@
         add('            @Override');
         add('            public void onPageFinished(WebView view, String url) {');
         add('                view.evaluateJavascript(DOWNLOAD_BRIDGE, null);');
+        add('            }');
+        add('');
+        add('            @Override');
+        add('            public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {');
+        add('                updateBackCallback();');
+        add('            }');
+        add('');
+        add('            @Override');
+        add('            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {');
+        add('                if (view == webView) {');
+        add('                    destroyWebView(false);');
+        add('                    recreate();');
+        add('                } else {');
+        add('                    view.destroy();');
+        add('                }');
+        add('                return true;');
         add('            }');
         add('        });');
         add('');
@@ -443,17 +533,15 @@
         add('');
         add('        webView.addJavascriptInterface(new SaveBridge(), "AndroidFileSaver");');
         add('');
-        add('        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {');
+        add('        backCallback = new OnBackPressedCallback(false) {');
         add('            @Override');
         add('            public void handleOnBackPressed() {');
         add('                if (webView != null && webView.canGoBack()) {');
         add('                    webView.goBack();');
-        add('                } else {');
-        add('                    setEnabled(false);');
-        add('                    getOnBackPressedDispatcher().onBackPressed();');
         add('                }');
         add('            }');
-        add('        });');
+        add('        };');
+        add('        getOnBackPressedDispatcher().addCallback(this, backCallback);');
 
         if (admob) {
             add('');
@@ -462,7 +550,16 @@
 
         add('');
         add('        if (savedInstanceState == null) {');
+        if (localNetwork) {
+            add('            requestLocalNetworkAccess();');
+        }
         add('            webView.loadUrl(START_URL);');
+        add('        }');
+        add('    }');
+        add('');
+        add('    private void updateBackCallback() {');
+        add('        if (backCallback != null) {');
+        add('            backCallback.setEnabled(webView != null && webView.canGoBack());');
         add('        }');
         add('    }');
         add('');
@@ -477,9 +574,13 @@
         add('    @Override');
         add('    protected void onRestoreInstanceState(@NonNull Bundle savedInstanceState) {');
         add('        super.onRestoreInstanceState(savedInstanceState);');
-        add('        if (webView != null) {');
-        add('            webView.restoreState(savedInstanceState);');
+        add('        if (webView == null) {');
+        add('            return;');
         add('        }');
+        add('        if (webView.restoreState(savedInstanceState) == null) {');
+        add('            webView.loadUrl(START_URL);');
+        add('        }');
+        add('        updateBackCallback();');
         add('    }');
         add('');
         add('    @Override');
@@ -507,6 +608,19 @@
             add('        }');
         }
         add('    }');
+
+        if (localNetwork) {
+            add('');
+            add('    private void requestLocalNetworkAccess() {');
+            add('        if (Build.VERSION.SDK_INT < LOCAL_NETWORK_MIN_SDK) {');
+            add('            return;');
+            add('        }');
+            add('        if (ContextCompat.checkSelfPermission(this, LOCAL_NETWORK_PERMISSION)');
+            add('                != PackageManager.PERMISSION_GRANTED) {');
+            add('            localNetworkPermissionLauncher.launch(LOCAL_NETWORK_PERMISSION);');
+            add('        }');
+            add('    }');
+        }
 
         if (media) {
             add('');
@@ -659,20 +773,38 @@
             add('            adView = null;');
             add('        }');
         }
-        add('        if (webView != null) {');
+        add('        destroyWebView(true);');
+        add('        super.onDestroy();');
+        add('    }');
+        add('');
+        add('    private void destroyWebView(boolean rendererAlive) {');
+        add('        if (fileChooserCallback != null) {');
+        add('            fileChooserCallback.onReceiveValue(null);');
+        add('            fileChooserCallback = null;');
+        add('        }');
+        if (media) {
+            add('        if (pendingPermissionRequest != null) {');
+            add('            pendingPermissionRequest.deny();');
+            add('            pendingPermissionRequest = null;');
+            add('        }');
+        }
+        add('        if (webView == null) {');
+        add('            return;');
+        add('        }');
+        add('        webView.setWebChromeClient(null);');
+        add('        webView.setWebViewClient(new WebViewClient());');
+        add('        if (rendererAlive) {');
         add('            webView.stopLoading();');
-        add('            webView.setWebChromeClient(null);');
-        add('            webView.setWebViewClient(new WebViewClient());');
         add('            webView.removeJavascriptInterface("AndroidFileSaver");');
         add('            webView.loadUrl("about:blank");');
-        add('            ViewParent parent = webView.getParent();');
-        add('            if (parent instanceof ViewGroup) {');
-        add('                ((ViewGroup) parent).removeView(webView);');
-        add('            }');
-        add('            webView.destroy();');
-        add('            webView = null;');
         add('        }');
-        add('        super.onDestroy();');
+        add('        ViewParent parent = webView.getParent();');
+        add('        if (parent instanceof ViewGroup) {');
+        add('            ((ViewGroup) parent).removeView(webView);');
+        add('        }');
+        add('        webView.destroy();');
+        add('        webView = null;');
+        add('        updateBackCallback();');
         add('    }');
         add('');
         add('    private class SaveBridge {');
@@ -743,7 +875,7 @@
 
         files['build.gradle'] =
             'plugins {\n' +
-            "    id 'com.android.application' version '9.2.0' apply false\n" +
+            "    id 'com.android.application' version '9.4.0' apply false\n" +
             '}\n';
 
         files['gradle.properties'] =
@@ -755,7 +887,7 @@
         files['gradle/wrapper/gradle-wrapper.properties'] =
             'distributionBase=GRADLE_USER_HOME\n' +
             'distributionPath=wrapper/dists\n' +
-            'distributionUrl=https\\://services.gradle.org/distributions/gradle-9.6.1-bin.zip\n' +
+            'distributionUrl=https\\://services.gradle.org/distributions/gradle-9.8.2-bin.zip\n' +
             'networkTimeout=10000\n' +
             'validateDistributionUrl=true\n' +
             'zipStoreBase=GRADLE_USER_HOME\n' +
@@ -777,7 +909,7 @@
             '}\n';
 
         const admobDeps = admob
-            ? "    implementation 'com.google.android.gms:play-services-ads:25.4.0'\n" +
+            ? "    implementation 'com.google.android.gms:play-services-ads:25.5.0'\n" +
             "    implementation 'com.google.android.ump:user-messaging-platform:4.0.0'\n"
             : '';
 
@@ -787,33 +919,35 @@
             '}\n' +
             '\n' +
             'android {\n' +
-            '    namespace "' + pkg + '"\n' +
-            '    compileSdk 36\n' +
+            '    namespace = "' + pkg + '"\n' +
+            '    compileSdk = 37\n' +
             '\n' +
             '    defaultConfig {\n' +
-            '        applicationId "' + pkg + '"\n' +
-            '        minSdk ' + opts.minSdk + '\n' +
-            '        targetSdk 36\n' +
-            '        versionCode 1\n' +
-            '        versionName "1.0"\n' +
+            '        applicationId = "' + pkg + '"\n' +
+            '        minSdk = ' + opts.minSdk + '\n' +
+            '        targetSdk = 37\n' +
+            '        versionCode = 1\n' +
+            '        versionName = "1.0"\n' +
             '    }\n' +
             '\n' +
             '    buildTypes {\n' +
             '        release {\n' +
-            '            minifyEnabled false\n' +
+            '            minifyEnabled = false\n' +
             "            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'\n" +
             '        }\n' +
             '    }\n' +
             '\n' +
             '    compileOptions {\n' +
-            '        sourceCompatibility JavaVersion.VERSION_17\n' +
-            '        targetCompatibility JavaVersion.VERSION_17\n' +
+            '        sourceCompatibility = JavaVersion.VERSION_17\n' +
+            '        targetCompatibility = JavaVersion.VERSION_17\n' +
             '    }\n' +
             '}\n' +
             '\n' +
             'dependencies {\n' +
-            "    implementation 'androidx.appcompat:appcompat:1.7.1'\n" +
-            "    implementation 'androidx.webkit:webkit:1.16.0'\n" +
+            "    implementation 'androidx.activity:activity:1.13.0'\n" +
+            "    implementation 'androidx.appcompat:appcompat:1.8.0'\n" +
+            "    implementation 'androidx.core:core:1.19.1'\n" +
+            "    implementation 'androidx.webkit:webkit:1.18.0'\n" +
             admobDeps +
             '}\n' +
             '\n' +
@@ -858,7 +992,8 @@
         files['app/src/main/java/' + pkgPath + '/MainActivity.java'] = mainActivity(pkg, {
             admob: admob,
             needsMediaPermissions: needsMediaPermissions,
-            fullscreen: !!opts.fullscreen
+            fullscreen: !!opts.fullscreen,
+            localNetwork: permSet.has('android.permission.ACCESS_LOCAL_NETWORK')
         });
 
         files['app/src/main/res/values/strings.xml'] =

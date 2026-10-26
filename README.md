@@ -48,7 +48,7 @@ settings.gradle
 build.gradle
 ```
 
-The project targets `compileSdk 36` / `targetSdk 36` (Android 16, matching Google Play's target API requirement), uses AGP 9.2.0 and Gradle 9.6.1, and depends on `androidx.appcompat` and `androidx.webkit`. No Kotlin. If you enable the AdMob banner, it also pulls in `com.google.android.gms:play-services-ads` and `com.google.android.ump:user-messaging-platform`; otherwise there are no third-party SDKs.
+The project targets `compileSdk 37` / `targetSdk 37` (Android 17, above Google Play's current API 36 requirement for new apps and updates), uses AGP 9.4.0 and Gradle 9.8.2, and depends on `androidx.activity`, `androidx.appcompat`, `androidx.core` and `androidx.webkit`. No Kotlin. If you enable the AdMob banner, it also pulls in `com.google.android.gms:play-services-ads` and `com.google.android.ump:user-messaging-platform`; otherwise there are no third-party SDKs.
 
 ### MainActivity, briefly
 
@@ -58,9 +58,13 @@ The project targets `compileSdk 36` / `targetSdk 36` (Android 16, matching Googl
 - A JavaScript interface plus an injected content script that intercepts `<a download>` clicks and blob/data URLs, converts them to base64, and hands them to the native save flow.
 - A `WebChromeClient` override for `onShowFileChooser` that opens Android's document picker and returns the selected file to the page.
 
+It also handles the newer platform rules: the window draws edge to edge with the page padded clear of the system bars, cutouts and keyboard (Fullscreen keeps the bars hidden instead), back navigation steps through WebView history using a callback that only stays enabled while there is history, so Android's predictive back animation works, and if the WebView renderer process crashes the activity rebuilds itself instead of the whole app going down.
+
 Both save paths go through `ACTION_CREATE_DOCUMENT`, so the user always gets a native save dialog rather than a silent write to app storage.
 
 If you checked Camera or Microphone in the permissions list, `MainActivity` also overrides `onPermissionRequest` to map WebView's `getUserMedia()` resource requests to the matching Android runtime permission, request it if not already granted, and only then grant the page access. Without this, checking those boxes only adds the manifest permission — the web page's camera/mic APIs would still hang with no native prompt.
+
+If you checked Local network, the manifest declares `ACCESS_LOCAL_NETWORK` and the app requests it at first launch on Android 17 and newer, where apps targeting API 37 need it to reach LAN addresses.
 
 ### AdMob (optional)
 
