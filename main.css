@@ -449,6 +449,7 @@ input[type="text"]:disabled {
     border: 1px solid var(--line);
     border-radius: 3px;
     padding: 1px 5px;
+    overflow-wrap: anywhere;
 }
 
 .notes .cap {

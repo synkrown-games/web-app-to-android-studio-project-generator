@@ -19,10 +19,10 @@
                     WebView, with a working save dialog and full asset access.</p>
             </div>
             <div class="stack-tag">
-                <div><b>AGP</b> 9.2.0</div>
-                <div><b>Gradle</b> 9.6.1</div>
+                <div><b>AGP</b> 9.4.0</div>
+                <div><b>Gradle</b> 9.8.2</div>
                 <div><b>WebViewAssetLoader</b></div>
-                <div><b>compileSdk</b> 36</div>
+                <div><b>targetSdk</b> 37</div>
             </div>
         </header>
 
@@ -126,6 +126,9 @@
                             <label class="check"><input type="checkbox" class="perm"
                                     value="android.permission.READ_CONTACTS"><span class="ct">Read
                                     contacts</span></label>
+                            <label class="check"><input type="checkbox" class="perm"
+                                    value="android.permission.ACCESS_LOCAL_NETWORK"><span class="ct">Local
+                                    network</span></label>
                         </div>
                     </div>
 
@@ -198,6 +201,11 @@
                     real Android runtime permission prompt, then feed the granted permission back to the WebView.</li>
                 <li>If you enabled AdMob, swap the test App ID and ad unit ID for your real ones before publishing,
                     and mark the app as "Contains ads" in Play Console's app content section.</li>
+                <li>If you checked Local network, the app asks for it on first launch. Android 17 and newer
+                    require it before the page can reach devices on your LAN, such as <code>192.168.x.x</code>
+                    addresses or <code>.local</code> hosts.</li>
+                <li>Outside Fullscreen, the app draws edge to edge as Android 15+ requires, with the page padded
+                    clear of the status bar, navigation bar, display cutouts and on-screen keyboard.</li>
                 <li>If you turned on Fullscreen, the status and navigation bars stay hidden until the user swipes
                     from a screen edge, then they auto-hide again.</li>
             </ol>
